@@ -58,17 +58,49 @@ def _build_qc_report(
     framing_label: str = "full-body",
     reasons: list[str] | None = None,
 ) -> photo_prep.PhotoQcReport:
+    bucket: Literal["lora_only", "body_only", "both", "rejected"]
+    if status == "fail":
+        bucket = "rejected"
+        usable_for_lora = False
+        usable_for_body = False
+        face_detected = False
+        body_detected = False
+        occlusion_label = "unknown"
+    elif framing_label == "head-closeup":
+        bucket = "lora_only"
+        usable_for_lora = True
+        usable_for_body = False
+        face_detected = True
+        body_detected = False
+        occlusion_label = "body_not_visible"
+    else:
+        bucket = "both"
+        usable_for_lora = True
+        usable_for_body = True
+        face_detected = True
+        body_detected = True
+        occlusion_label = "clear"
+
     return photo_prep.PhotoQcReport(
         framing_label=framing_label,
         metrics={
-            "face_detected": True,
-            "body_landmarks_detected": True,
+            "has_person": face_detected or body_detected,
+            "face_detected": face_detected,
+            "body_detected": body_detected,
+            "body_landmarks_detected": body_detected,
             "blur_score": blur_score,
             "exposure_score": exposure_score,
             "framing_label": framing_label,
+            "occlusion_label": occlusion_label,
+            "resolution_ok": True,
         },
         reasons=reasons or [],
         status=status,
+        bucket=bucket,
+        usable_for_lora=usable_for_lora,
+        usable_for_body=usable_for_body,
+        reason_codes=[] if status == "pass" else [bucket],
+        reason_messages=reasons or [],
     )
 
 
@@ -168,12 +200,16 @@ def test_photoset_upload_persists_derivatives_and_stable_qc_payload(
                     second_entry = payload["entries"][1]
                     assert first_entry["qc_status"] == "pass"
                     assert first_entry["accepted_for_character_use"] is True
-                    assert set(first_entry["qc_metrics"]) == {
+                    assert set(first_entry["qc_metrics"]) >= {
+                        "has_person",
                         "face_detected",
+                        "body_detected",
                         "body_landmarks_detected",
                         "blur_score",
                         "exposure_score",
                         "framing_label",
+                        "occlusion_label",
+                        "resolution_ok",
                     }
                     assert second_entry["qc_status"] == "fail"
                     assert second_entry["accepted_for_character_use"] is False
@@ -209,11 +245,11 @@ def test_photoset_upload_persists_derivatives_and_stable_qc_payload(
                     assert len(entries) == 2
                     assert len(storage_objects) == 6
                     assert [entry.qc_status for entry in entries] == ["pass", "fail"]
-                    assert [event.event_type for event in history_events] == [
-                        "photoset.created",
-                        "photo.prepared",
-                        "photo.prepared",
-                    ]
+                    event_types = [event.event_type for event in history_events]
+                    assert event_types.count("photoset.created") == 1
+                    assert event_types.count("photo.prepared") == 2
+                    assert event_types.count("photoset.prepared") == 1
+                    assert "job.completed" in event_types
 
                     for storage_object in storage_objects:
                         assert Path(storage_object.storage_path).exists()

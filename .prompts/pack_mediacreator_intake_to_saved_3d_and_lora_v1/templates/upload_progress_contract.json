@@ -1,0 +1,20 @@
+{
+  "photoset_public_id": "pset_01HXYZEXAMPLE",
+  "job_public_id": "job_01HXYZEXAMPLE",
+  "character_label": "Jeremy Test Character",
+  "state": "running",
+  "stage_name": "classification",
+  "stage_percent": 72,
+  "total_files": 18,
+  "uploaded_files": 18,
+  "processed_files": 13,
+  "last_processed_filename": "IMG_2041.JPG",
+  "bucket_counts": {
+    "lora_only": 4,
+    "body_only": 5,
+    "both": 3,
+    "rejected": 1,
+    "pending": 5
+  },
+  "can_create_character": false
+}

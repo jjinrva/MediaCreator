@@ -1,0 +1,9 @@
+from tests import test_lora_dataset_api as _dataset_api
+from tests import test_lora_dataset_manifest_contract as _dataset_contract
+
+test_lora_dataset_route_writes_dataset_files_manifest_and_prompt_contract = (
+    _dataset_api.test_lora_dataset_route_writes_dataset_files_manifest_and_prompt_contract
+)
+test_lora_dataset_manifest_uses_only_lora_qualified_derivatives = (
+    _dataset_contract.test_lora_dataset_manifest_uses_only_lora_qualified_derivatives
+)

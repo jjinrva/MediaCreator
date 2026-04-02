@@ -54,17 +54,49 @@ def _build_qc_report(
     framing_label: str = "full-body",
     reasons: list[str] | None = None,
 ) -> photo_prep.PhotoQcReport:
+    bucket: Literal["lora_only", "body_only", "both", "rejected"]
+    if status == "fail":
+        bucket = "rejected"
+        usable_for_lora = False
+        usable_for_body = False
+        face_detected = False
+        body_detected = False
+        occlusion_label = "unknown"
+    elif framing_label == "head-closeup":
+        bucket = "lora_only"
+        usable_for_lora = True
+        usable_for_body = False
+        face_detected = True
+        body_detected = False
+        occlusion_label = "body_not_visible"
+    else:
+        bucket = "both"
+        usable_for_lora = True
+        usable_for_body = True
+        face_detected = True
+        body_detected = True
+        occlusion_label = "clear"
+
     return photo_prep.PhotoQcReport(
         framing_label=framing_label,
         metrics={
-            "face_detected": True,
-            "body_landmarks_detected": True,
+            "has_person": face_detected or body_detected,
+            "face_detected": face_detected,
+            "body_detected": body_detected,
+            "body_landmarks_detected": body_detected,
             "blur_score": blur_score,
             "exposure_score": exposure_score,
             "framing_label": framing_label,
+            "occlusion_label": occlusion_label,
+            "resolution_ok": True,
         },
         reasons=reasons or [],
         status=status,
+        bucket=bucket,
+        usable_for_lora=usable_for_lora,
+        usable_for_body=usable_for_body,
+        reason_codes=[] if status == "pass" else [bucket],
+        reason_messages=reasons or [],
     )
 
 

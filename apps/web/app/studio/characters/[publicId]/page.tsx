@@ -26,14 +26,19 @@ type JobSummary = {
 type CharacterDetail = {
   accepted_entries: Array<{
     artifact_urls: {
+      body: string | null;
+      lora: string | null;
       normalized: string;
       original: string;
       thumbnail: string;
     };
+    bucket: string;
     framing_label: string;
     original_filename: string;
     public_id: string;
     qc_status: "fail" | "pass" | "warn";
+    reason_codes: string[];
+    reason_messages: string[];
   }>;
   accepted_entry_count: number;
   created_at: string;
@@ -330,24 +335,24 @@ export default async function CharacterDetailPage({
   const title = character.label ?? `Character ${character.public_id.slice(0, 8)}`;
 
   return (
-    <StudioFrame currentPath={`/studio/characters/${params.publicId}`} phaseLabel="Phase 21">
+    <StudioFrame currentPath={`/studio/characters/${params.publicId}`} phaseLabel="Saved outputs">
       <div className="statusStrip" role="status" aria-live="polite">
-        <span className="statusBadge">registry asset</span>
-        <span className="statusBadge">history recorded</span>
-        <span className="statusBadge">api-backed detail</span>
+        <span className="statusBadge">saved character</span>
+        <span className="statusBadge">accepted-only lineage</span>
+        <span className="statusBadge">artifact-backed outputs</span>
       </div>
 
       <PageHeader
-        eyebrow="Phase 21"
+        eyebrow="Character detail"
         title={title}
-        summary={`This detail route now keeps body, pose, face, reconstruction, dataset, and LoRA registry state in sync from the API. Phase 21 adds truthful local LoRA training readiness and active-model reporting without pretending AI Toolkit is installed.`}
+        summary="This route keeps the saved character, accepted source assets, 3D output status, and downstream dataset/training state aligned with the API."
         actions={<span className="headerCallout">{character.status}</span>}
       />
 
       <div className="characterImportMain">
         <SectionCard
           title="Overview"
-          description="The base registry record, source photoset, and accepted prepared references are shown here without inventing later-phase values."
+          description="The saved character, source photoset, and accepted prepared references are shown here with their persisted routing buckets."
         >
           <dl className="keyValueList">
             <div className="keyValueRow">
@@ -380,7 +385,11 @@ export default async function CharacterDetailPage({
                 <div className="thumbnailMeta">
                   <strong>{entry.original_filename}</strong>
                   <span>{entry.framing_label}</span>
+                  <span className="thumbnailBadge">{entry.bucket}</span>
                   <span className={badgeClassName(entry.qc_status)}>{`QC ${entry.qc_status}`}</span>
+                  {entry.reason_messages.map((reason) => (
+                    <span key={`${entry.public_id}-${reason}`}>{reason}</span>
+                  ))}
                 </div>
               </article>
             ))}
@@ -436,7 +445,7 @@ export default async function CharacterDetailPage({
 
         <SectionCard
           title="Outputs"
-          description="The GLB preview path, high-detail reconstruction path, and final export destination are API-backed now. Phase 18 reports the current reconstruction level truthfully and only writes a detail-prep artifact when the capture set qualifies."
+          description="The saved base GLB, the queued high-detail path, and the later final export destination are shown only when the backing artifact exists."
         >
           <GlbPreview
             alt={`${title} GLB preview`}
@@ -512,7 +521,7 @@ export default async function CharacterDetailPage({
 
         <SectionCard
           title="LoRA Dataset"
-          description="Phase 20 keeps the training-set contract auditable: accepted images only, visible prompt expansion, and one versioned dataset folder per character."
+          description="The training-set contract stays auditable: accepted images only, visible prompt expansion, and one versioned dataset folder per character."
         >
           <LoraDatasetStatus
             characterPublicId={character.public_id}
@@ -548,7 +557,7 @@ export default async function CharacterDetailPage({
 
         <SectionCard
           title="LoRA Training"
-          description="Phase 21 adds the NAS-backed model registry and the truthful local-training gate. If AI Toolkit is missing, the UI says so and keeps the training action disabled."
+          description="The model registry and local-training gate stay truthful. If AI Toolkit is missing, the UI says so and keeps the training action disabled."
         >
           <LoraTrainingStatus
             activeModel={

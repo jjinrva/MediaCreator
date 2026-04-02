@@ -14,10 +14,11 @@ dependencies = [
   "mediapipe>=0.10,<1",
   "numpy>=2,<3",
   "opencv-python-headless>=4.13,<5",
-  "pillow>=11,<12",
+  "pillow>=11,<13",
   "pydantic>=2.7,<3",
   "python-multipart>=0.0.9,<1",
   "psycopg[binary]>=3.2,<4",
+  "rembg[cpu]>=2.0,<3",
   "sqlalchemy>=2.0,<3",
   "uvicorn[standard]>=0.30,<1"
 ]
@@ -48,5 +49,5 @@ strict = true
 files = ["app", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["cv2", "mediapipe", "mediapipe.*", "numpy", "PIL"]
+module = ["cv2", "mediapipe", "mediapipe.*", "numpy", "PIL", "rembg", "rembg.*"]
 ignore_missing_imports = true

@@ -25,12 +25,20 @@ from app.services.jobs import (
     enqueue_job,
     get_system_actor_id,
 )
+from app.services.photo_prep import (
+    is_bucket_accepted_for_character_use,
+    is_bucket_body_qualified,
+    is_qc_status_accepted_for_character_use,
+)
 from app.services.storage_service import resolve_storage_layout
+
+MIN_BODY_QUALIFIED_ENTRIES_FOR_DETAIL_PREP = 3
 
 
 @dataclass(frozen=True)
 class ReconstructionAssessment:
     accepted_entry_count: int
+    body_qualified_entry_count: int
     detail_level: str
     qualifies_for_detail_prep: bool
     reconstruction_strategy: str
@@ -55,27 +63,54 @@ def _source_photoset(session: Session, character_asset: Asset) -> Asset:
 
 
 def _capture_entries(session: Session, photoset_asset_id: uuid.UUID) -> list[PhotosetEntry]:
-    return list(
-        session.scalars(
+    accepted_entries = [
+        entry
+        for entry in session.scalars(
             _photoset_entry_query().where(PhotosetEntry.photoset_asset_id == photoset_asset_id)
         ).all()
+        if (
+            is_bucket_accepted_for_character_use(entry.bucket)
+            if entry.bucket
+            else is_qc_status_accepted_for_character_use(entry.qc_status)
+        )
+    ]
+    return accepted_entries
+
+
+def _body_qualified_entries(session: Session, photoset_asset_id: uuid.UUID) -> list[PhotosetEntry]:
+    return list(
+        entry
+        for entry in _capture_entries(session, photoset_asset_id)
+        if entry.bucket and is_bucket_body_qualified(entry.bucket)
     )
 
 
 def _capture_input_paths(session: Session, photoset_asset_id: uuid.UUID) -> list[str]:
     paths: list[str] = []
-    for entry in _capture_entries(session, photoset_asset_id):
-        storage_object = session.get(StorageObject, entry.normalized_storage_object_id)
+    for entry in _body_qualified_entries(session, photoset_asset_id):
+        preferred_storage_object_id = entry.normalized_storage_object_id
+        if entry.body_derivative_storage_object_id is not None:
+            preferred_storage_object_id = entry.body_derivative_storage_object_id
+
+        storage_object = session.get(StorageObject, preferred_storage_object_id)
         if storage_object is None:
-            raise LookupError("Normalized storage object not found for photoset entry.")
+            raise LookupError(
+                "Prepared body-qualified storage object not found for photoset entry."
+            )
         paths.append(storage_object.storage_path)
     return paths
 
 
-def _assessment_for_entry_count(accepted_entry_count: int) -> ReconstructionAssessment:
-    qualifies_for_detail_prep = accepted_entry_count >= 6
+def _assessment_for_entry_counts(
+    accepted_entry_count: int,
+    body_qualified_entry_count: int,
+) -> ReconstructionAssessment:
+    qualifies_for_detail_prep = (
+        body_qualified_entry_count >= MIN_BODY_QUALIFIED_ENTRIES_FOR_DETAIL_PREP
+    )
     return ReconstructionAssessment(
         accepted_entry_count=accepted_entry_count,
+        body_qualified_entry_count=body_qualified_entry_count,
         detail_level=(
             "riggable-base-plus-detail-prep" if qualifies_for_detail_prep else "riggable-base-only"
         ),
@@ -96,7 +131,8 @@ def assess_character_capture(
 
     photoset_asset = _source_photoset(session, character_asset)
     accepted_entry_count = len(_capture_entries(session, photoset_asset.id))
-    return _assessment_for_entry_count(accepted_entry_count)
+    body_qualified_entry_count = len(_body_qualified_entries(session, photoset_asset.id))
+    return _assessment_for_entry_counts(accepted_entry_count, body_qualified_entry_count)
 
 
 def _resolve_output_root(character_public_id: uuid.UUID) -> tuple[Path, str]:
@@ -147,8 +183,9 @@ def build_reconstruction_job_payload(
 
     photoset_asset = _source_photoset(session, character_asset)
     capture_paths = _capture_input_paths(session, photoset_asset.id)
-    capture_entries = _capture_entries(session, photoset_asset.id)
-    assessment = _assessment_for_entry_count(len(capture_entries))
+    accepted_entries = _capture_entries(session, photoset_asset.id)
+    capture_entries = _body_qualified_entries(session, photoset_asset.id)
+    assessment = _assessment_for_entry_counts(len(accepted_entries), len(capture_entries))
     output_root, output_root_class = _resolve_output_root(character_public_id)
 
     payload = HighDetailReconstructionJobPayload(
@@ -156,6 +193,7 @@ def build_reconstruction_job_payload(
         capture_entry_public_ids=[entry.public_id for entry in capture_entries],
         capture_input_paths=capture_paths,
         accepted_entry_count=assessment.accepted_entry_count,
+        body_qualified_entry_count=assessment.body_qualified_entry_count,
         reconstruction_strategy=assessment.reconstruction_strategy,
         detail_level_target=assessment.detail_level,
         output_detail_prep_path=str(output_root / "detail-prep.json"),
@@ -184,7 +222,10 @@ def _detail_prep_manifest(payload: HighDetailReconstructionJobPayload) -> bytes:
         "artifact_kind": "detail-prep-manifest",
         "coarse_capture_gate": {
             "accepted_entry_count": payload.accepted_entry_count,
-            "minimum_for_detail_prep": 6,
+            "body_qualified_entry_count": payload.body_qualified_entry_count,
+            "minimum_body_qualified_images_for_detail_prep": (
+                MIN_BODY_QUALIFIED_ENTRIES_FOR_DETAIL_PREP
+            ),
             "lighting_review_required": True,
             "overlap_review_required": True,
             "stable_subject_review_required": True,
@@ -321,6 +362,7 @@ def execute_character_reconstruction_job(
         asset_id=character_asset.id,
         details={
             "accepted_entry_count": payload.accepted_entry_count,
+            "body_qualified_entry_count": payload.body_qualified_entry_count,
             "detail_level": payload.detail_level_target,
             "job_public_id": str(job.public_id),
             "reconstruction_strategy": payload.reconstruction_strategy,

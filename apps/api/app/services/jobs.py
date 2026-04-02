@@ -17,6 +17,15 @@ WORKER_SERVICE_NAME = "worker"
 DEFAULT_WORKER_HEARTBEAT_STALE_AFTER_SECONDS = 15
 
 
+def _default_ingest_bucket_counts() -> dict[str, int]:
+    return {
+        "lora_only": 0,
+        "body_only": 0,
+        "both": 0,
+        "rejected": 0,
+    }
+
+
 class JobState(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -33,6 +42,15 @@ class NoopJobPayload(BaseModel):
 class FailingNoopJobPayload(BaseModel):
     kind: Literal["failing-noop"] = "failing-noop"
     error_summary: str = "Simulated job failure"
+
+
+class PhotosetIngestJobPayload(BaseModel):
+    kind: Literal["photoset-ingest"] = "photoset-ingest"
+    character_label: str
+    total_files: int
+    processed_files: int = 0
+    bucket_counts: dict[str, int] = Field(default_factory=_default_ingest_bucket_counts)
+    photoset_public_id: uuid.UUID | None = None
 
 
 class BlenderPreviewExportJobPayload(BaseModel):
@@ -59,6 +77,7 @@ class HighDetailReconstructionJobPayload(BaseModel):
     capture_entry_public_ids: list[uuid.UUID]
     capture_input_paths: list[str]
     accepted_entry_count: int
+    body_qualified_entry_count: int
     reconstruction_strategy: str
     detail_level_target: str
     output_detail_prep_path: str
@@ -96,7 +115,8 @@ class VideoRenderJobPayload(BaseModel):
 
 
 JobPayload = Annotated[
-    NoopJobPayload
+    PhotosetIngestJobPayload
+    | NoopJobPayload
     | FailingNoopJobPayload
     | BlenderPreviewExportJobPayload
     | HighDetailReconstructionJobPayload
@@ -135,6 +155,25 @@ def _append_job_history_event(
     )
     session.add(history_event)
     return history_event
+
+
+def _job_progress_snapshot(job: Job) -> dict[str, object]:
+    details: dict[str, object] = {
+        "status": job.status,
+        "job_type": job.job_type,
+        "step_name": job.step_name,
+        "progress_percent": job.progress_percent,
+    }
+    total_files = job.payload.get("total_files")
+    processed_files = job.payload.get("processed_files")
+    bucket_counts = job.payload.get("bucket_counts")
+    if isinstance(total_files, int):
+        details["total_files"] = total_files
+    if isinstance(processed_files, int):
+        details["processed_files"] = processed_files
+    if isinstance(bucket_counts, dict):
+        details["bucket_counts"] = bucket_counts
+    return details
 
 
 def get_system_actor_id(session: Session, handle: str = "god") -> uuid.UUID:
@@ -240,13 +279,105 @@ def enqueue_job(
         actor_id,
         job,
         "job.queued",
-        {"status": JobState.QUEUED, "job_type": job.job_type},
+        _job_progress_snapshot(job),
     )
     return job
 
 
 def get_job_by_public_id(session: Session, public_id: uuid.UUID) -> Job | None:
     return session.execute(_job_query().where(Job.public_id == public_id)).scalar_one_or_none()
+
+
+def update_job_payload(
+    session: Session,
+    job: Job,
+    **payload_updates: object,
+) -> Job:
+    merged_payload = dict(job.payload)
+    merged_payload.update(payload_updates)
+    validated_payload = JOB_PAYLOAD_ADAPTER.validate_python(merged_payload)
+    job.payload = validated_payload.model_dump(mode="json")
+    session.flush()
+    return job
+
+
+def start_job(
+    session: Session,
+    actor_id: uuid.UUID,
+    job: Job,
+    *,
+    step_name: str,
+    progress_percent: int,
+) -> Job:
+    job.status = JobState.RUNNING
+    job.progress_percent = progress_percent
+    job.step_name = step_name
+    job.error_summary = None
+    if job.started_at is None:
+        job.started_at = _now()
+    _append_job_history_event(
+        session,
+        actor_id,
+        job,
+        "job.running",
+        _job_progress_snapshot(job),
+    )
+    session.flush()
+    return job
+
+
+def get_job_history(session: Session, job_id: uuid.UUID) -> list[HistoryEvent]:
+    return list(
+        session.execute(
+            select(HistoryEvent)
+            .where(HistoryEvent.job_id == job_id)
+            .order_by(HistoryEvent.created_at.asc())
+        ).scalars()
+    )
+
+
+def serialize_job(job: Job, history_events: list[HistoryEvent]) -> dict[str, object]:
+    progress: dict[str, object] | None = None
+    total_files = job.payload.get("total_files")
+    processed_files = job.payload.get("processed_files")
+    bucket_counts = job.payload.get("bucket_counts")
+    if (
+        isinstance(total_files, int)
+        or isinstance(processed_files, int)
+        or isinstance(bucket_counts, dict)
+    ):
+        progress = {
+            "total_files": total_files if isinstance(total_files, int) else None,
+            "processed_files": processed_files if isinstance(processed_files, int) else None,
+            "bucket_counts": bucket_counts if isinstance(bucket_counts, dict) else None,
+        }
+
+    return {
+        "public_id": job.public_id,
+        "job_type": job.job_type,
+        "status": job.status,
+        "progress_percent": job.progress_percent,
+        "step_name": job.step_name,
+        "error_summary": job.error_summary,
+        "started_at": job.started_at,
+        "finished_at": job.finished_at,
+        "output_asset_id": job.output_asset_id,
+        "output_storage_object_id": job.output_storage_object_id,
+        "progress": progress,
+        "stage_history": [
+            {
+                "created_at": event.created_at,
+                "event_type": event.event_type,
+                "status": event.details.get("status"),
+                "step_name": event.details.get("step_name"),
+                "progress_percent": event.details.get("progress_percent"),
+                "total_files": event.details.get("total_files"),
+                "processed_files": event.details.get("processed_files"),
+                "bucket_counts": event.details.get("bucket_counts"),
+            }
+            for event in history_events
+        ],
+    }
 
 
 def claim_next_queued_job(session: Session, actor_id: uuid.UUID) -> Job | None:
@@ -269,7 +400,7 @@ def claim_next_queued_job(session: Session, actor_id: uuid.UUID) -> Job | None:
         actor_id,
         job,
         "job.running",
-        {"status": JobState.RUNNING, "job_type": job.job_type, "step_name": job.step_name},
+        _job_progress_snapshot(job),
     )
     session.flush()
     return job
@@ -294,7 +425,7 @@ def complete_job(
         actor_id,
         job,
         "job.completed",
-        {"status": JobState.COMPLETED, "job_type": job.job_type},
+        _job_progress_snapshot(job),
     )
     session.flush()
     return job
@@ -311,7 +442,10 @@ def fail_job(session: Session, actor_id: uuid.UUID, job: Job, error_summary: str
         actor_id,
         job,
         "job.failed",
-        {"status": JobState.FAILED, "job_type": job.job_type, "error_summary": error_summary},
+        {
+            **_job_progress_snapshot(job),
+            "error_summary": error_summary,
+        },
     )
     session.flush()
     return job
@@ -328,7 +462,7 @@ def cancel_job(session: Session, actor_id: uuid.UUID, job: Job) -> Job:
         actor_id,
         job,
         "job.canceled",
-        {"status": JobState.CANCELED, "job_type": job.job_type},
+        _job_progress_snapshot(job),
     )
     session.flush()
     return job
@@ -349,12 +483,7 @@ def advance_job_progress(
         actor_id,
         job,
         "job.progressed",
-        {
-            "status": job.status,
-            "job_type": job.job_type,
-            "step_name": step_name,
-            "progress_percent": progress_percent,
-        },
+        _job_progress_snapshot(job),
     )
     session.flush()
     return job

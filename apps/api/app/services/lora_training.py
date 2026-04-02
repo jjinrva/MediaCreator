@@ -137,6 +137,12 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _storage_object_has_artifact(storage_object: StorageObject | None) -> bool:
+    if storage_object is None:
+        return False
+    return Path(storage_object.storage_path).exists()
+
+
 def register_lora_model(
     session: Session,
     character_public_id: uuid.UUID,
@@ -151,6 +157,8 @@ def register_lora_model(
     character_asset = get_character_asset(session, character_public_id)
     if character_asset is None:
         raise LookupError("Character not found.")
+    if status == "current" and (storage_path is None or not storage_path.exists()):
+        raise ValueError("Current LoRA registry entries require a real artifact file.")
 
     actor_id = get_system_actor_id(session)
     storage_object_id: uuid.UUID | None = None
@@ -271,8 +279,9 @@ def resolve_active_lora_artifact(
         return None
 
     storage_object = session.get(StorageObject, active_entry.storage_object_id)
-    if storage_object is None:
+    if not _storage_object_has_artifact(storage_object):
         return None
+    assert storage_object is not None
 
     return {
         "model_name": active_entry.model_name,
@@ -529,18 +538,21 @@ def get_character_lora_training_payload(
     registry_payload: list[dict[str, object]] = []
     for entry in registry_entries:
         storage_object_public_id = None
+        reported_status = entry.status
         if entry.storage_object_id is not None:
             storage_object = session.get(StorageObject, entry.storage_object_id)
             storage_object_public_id = (
                 storage_object.public_id if storage_object is not None else None
             )
+            if entry.status == "current" and not _storage_object_has_artifact(storage_object):
+                reported_status = "artifact-missing"
         registry_payload.append(
             {
                 "details": entry.details,
                 "model_name": entry.model_name,
                 "prompt_handle": entry.prompt_handle,
                 "public_id": entry.public_id,
-                "status": entry.status,
+                "status": reported_status,
                 "storage_object_public_id": storage_object_public_id,
             }
         )

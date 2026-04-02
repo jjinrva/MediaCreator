@@ -691,6 +691,44 @@ li {
   color: var(--text);
 }
 
+.ingestProgressPanel {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-strong) 84%, transparent);
+}
+
+.ingestProgressGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.ingestProgressCard,
+.bucketSummaryCard {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 84%, transparent);
+}
+
+.bucketSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.ingestStageList {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
 .glbPreviewShell {
   display: grid;
   gap: 0.9rem;
@@ -758,6 +796,17 @@ li {
   border-radius: 20px;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel-strong) 84%, transparent);
+}
+
+.thumbnailButton {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .thumbnailPreview {
@@ -875,6 +924,49 @@ li {
 
 .thumbnailReasonList li {
   color: var(--muted);
+}
+
+.thumbnailDialogBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: rgba(15, 18, 28, 0.62);
+}
+
+.thumbnailDialogCard {
+  width: min(100%, 72rem);
+  max-height: calc(100vh - 2.5rem);
+  overflow: auto;
+  display: grid;
+  gap: 1rem;
+  padding: 1.1rem;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+}
+
+.thumbnailDialogBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.9fr);
+  gap: 1rem;
+}
+
+.thumbnailDialogImage {
+  width: 100%;
+  height: auto;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.thumbnailDialogDetails {
+  display: grid;
+  align-content: start;
+  gap: 0.9rem;
 }
 
 .runtimePanelGrid {
@@ -1037,6 +1129,12 @@ li {
   }
 
   .characterImportLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .ingestProgressGrid,
+  .bucketSummaryGrid,
+  .thumbnailDialogBody {
     grid-template-columns: 1fr;
   }
 

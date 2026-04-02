@@ -106,10 +106,15 @@ export function GlbPreview({
           React.createElement("model-viewer", {
             alt,
             "camera-controls": true,
+            "camera-orbit": "0deg 78deg 2.8m",
+            "camera-target": "0m 1m 0m",
             className: "glbPreviewViewer",
             "data-testid": "glb-preview-viewer",
             exposure: "1",
+            "field-of-view": "18deg",
             "interaction-prompt": "none",
+            "min-camera-orbit": "auto auto 1.9m",
+            "max-camera-orbit": "auto auto 3.4m",
             "shadow-intensity": "1",
             src
           })
@@ -121,8 +126,9 @@ export function GlbPreview({
         )}
       </div>
       <div className="thumbnailMeta">
-        <strong>Preview status</strong>
+        <strong>Saved 3D preview</strong>
         <span className="thumbnailBadge">{status}</span>
+        <span>Framing: full-body</span>
         <span>{`Texture fidelity: ${textureFidelity}`}</span>
         <span>{detail}</span>
         <button

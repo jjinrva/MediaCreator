@@ -180,20 +180,22 @@ def _detail_level(
 
 def _reconstruction_detail(
     *,
+    body_qualified_entry_count: int,
     detail_level: str,
     strategy: str,
 ) -> str:
     if detail_level == "riggable-base-plus-detail-prep":
         return (
             "The riggable base GLB is available and the current capture set qualified for the "
-            "COLMAP-backed detail-prep contract. Phase 18 does not claim a freeform refined "
-            "mesh yet."
+            "COLMAP-backed detail-prep contract from three or more body-qualified images. "
+            "Phase 18 does not claim a freeform refined mesh yet."
         )
     if detail_level == "riggable-base-only":
         return (
             "The riggable base GLB is available, but the current capture set has not produced "
-            "a detail-prep artifact. Add broader multi-view coverage before expecting the "
-            f"'{strategy}' path to advance beyond the base stage."
+            "a detail-prep artifact. "
+            f"Current body-qualified inputs: {body_qualified_entry_count}. Add broader multi-view "
+            f"coverage before expecting the '{strategy}' path to advance beyond the base stage."
         )
     return (
         "Run the high-detail path to generate the riggable base GLB and evaluate the current "
@@ -221,7 +223,11 @@ def _reconstruction_payload(
 
     return {
         "detail_level": detail_level,
-        "detail": _reconstruction_detail(detail_level=detail_level, strategy=strategy),
+        "detail": _reconstruction_detail(
+            body_qualified_entry_count=assessment.body_qualified_entry_count,
+            detail_level=detail_level,
+            strategy=strategy,
+        ),
         "strategy": strategy,
         "riggable_base_glb": _artifact_payload(
             api_base_url=api_base_url,
@@ -352,13 +358,13 @@ def get_character_export_payload(
         "preview_glb": _artifact_payload(
             api_base_url=api_base_url,
             available_detail=(
-                "Preview GLB exported from the Blender Rigify runtime is available and now "
+                "Saved base GLB output from the Blender Rigify runtime is available and now "
                 f"carries the '{texture_fidelity}' material state."
             ),
             character_public_id=character_asset.public_id,
             detail_if_missing=(
-                "No GLB preview is available yet. Later Blender export phases will write the "
-                "preview artifact here."
+                "No saved base GLB is available yet. Queue the Blender export path to write "
+                "the first artifact-backed preview here."
             ),
             path_suffix="preview.glb",
             storage_object=preview_storage,

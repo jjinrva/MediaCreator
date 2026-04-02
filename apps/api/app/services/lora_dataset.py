@@ -145,6 +145,8 @@ def _accepted_photoset_entries(
         entry
         for entry in photoset_entries
         if str(entry.public_id) in accepted_entry_public_ids
+        and entry.bucket in {"lora_only", "both"}
+        and entry.usable_for_lora
     ]
 
 
@@ -187,15 +189,20 @@ def build_character_lora_dataset(session: Session, character_public_id: uuid.UUI
         accepted_entry_public_ids=accepted_entry_public_ids,
     )
     if not accepted_entries:
-        raise ValueError("Character has no strict accepted entries for dataset creation.")
+        raise ValueError("Character has no LoRA-qualified images for dataset creation.")
+
+    accepted_entry_public_id_set = {str(entry.public_id) for entry in accepted_entries}
+    lora_entries_payload = [
+        entry_payload
+        for entry_payload in accepted_entries_payload
+        if str(entry_payload["public_id"]) in accepted_entry_public_id_set
+    ]
 
     label = str(character_payload["label"] or f"Character {str(character_public_id)[:8]}")
-    framing_labels = [
-        str(entry_payload["framing_label"]) for entry_payload in accepted_entries_payload
-    ]
+    framing_labels = [str(entry_payload["framing_label"]) for entry_payload in lora_entries_payload]
     prompt_contract = _prompt_contract(
         label,
-        accepted_entry_count=len(accepted_entries_payload),
+        accepted_entry_count=len(lora_entries_payload),
         character_public_id=character_public_id,
         framing_labels=framing_labels,
     )
@@ -208,11 +215,14 @@ def build_character_lora_dataset(session: Session, character_public_id: uuid.UUI
 
     manifest_entries: list[dict[str, object]] = []
     for index, entry in enumerate(accepted_entries, start=1):
-        normalized_storage_object = session.get(StorageObject, entry.normalized_storage_object_id)
-        if normalized_storage_object is None:
-            raise LookupError("Normalized storage object not found for accepted entry.")
+        if entry.lora_derivative_storage_object_id is None:
+            raise LookupError("LoRA derivative storage object not found for accepted entry.")
 
-        source_path = Path(normalized_storage_object.storage_path)
+        lora_storage_object = session.get(StorageObject, entry.lora_derivative_storage_object_id)
+        if lora_storage_object is None:
+            raise LookupError("LoRA derivative storage object not found for accepted entry.")
+
+        source_path = Path(lora_storage_object.storage_path)
         image_filename = f"{index:03d}{source_path.suffix.lower() or '.png'}"
         caption_filename = f"{index:03d}.txt"
         target_image_path = images_root / image_filename
@@ -232,10 +242,15 @@ def build_character_lora_dataset(session: Session, character_public_id: uuid.UUI
 
         manifest_entries.append(
             {
+                "bucket": entry.bucket,
                 "caption_file": str(target_caption_path.relative_to(dataset_root)),
                 "caption_text": caption_text,
                 "image_file": str(target_image_path.relative_to(dataset_root)),
                 "original_filename": entry.original_filename,
+                "reason_codes": entry.reason_codes,
+                "reason_messages": entry.reason_messages,
+                "source_derivative_path": str(source_path),
+                "source_derivative_storage_object_public_id": str(lora_storage_object.public_id),
                 "source_entry_public_id": str(entry.public_id),
                 "source_photo_asset_id": str(entry.photo_asset_id),
             }
@@ -318,12 +333,15 @@ def get_character_lora_dataset_payload(
         character_public_id,
     )
     label = str(character_payload["label"] or f"Character {str(character_public_id)[:8]}")
-    framing_labels = [
-        str(entry_payload["framing_label"]) for entry_payload in accepted_entries_payload
+    lora_entries_payload = [
+        entry_payload
+        for entry_payload in accepted_entries_payload
+        if entry_payload.get("bucket") in {"lora_only", "both"}
     ]
+    framing_labels = [str(entry_payload["framing_label"]) for entry_payload in lora_entries_payload]
     prompt_contract = _prompt_contract(
         label,
-        accepted_entry_count=len(accepted_entries_payload),
+        accepted_entry_count=len(lora_entries_payload),
         character_public_id=character_public_id,
         framing_labels=framing_labels,
     )
@@ -346,7 +364,7 @@ def get_character_lora_dataset_payload(
         "dataset": {
             "dataset_version": DATASET_VERSION,
             "detail": detail,
-            "entry_count": len(accepted_entries_payload),
+            "entry_count": len(lora_entries_payload),
             "manifest_storage_object_public_id": (
                 manifest_storage_object.public_id if manifest_storage_object is not None else None
             ),

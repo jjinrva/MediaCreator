@@ -1,0 +1,30 @@
+{
+  "character_public_id": "char_01HXYZEXAMPLE",
+  "label": "Jeremy Test Character",
+  "outputs": [
+    {
+      "output_type": "character_glb",
+      "status": "complete",
+      "artifact_path": "/nas/characters/char_01HXYZEXAMPLE/exports/final.glb",
+      "artifact_exists": true,
+      "job_public_id": "job_01HXYZ3D",
+      "history_event_written": true
+    },
+    {
+      "output_type": "lora_model",
+      "status": "complete",
+      "artifact_path": "/nas/models/lora/char_01HXYZEXAMPLE/v3/model.safetensors",
+      "artifact_exists": true,
+      "job_public_id": "job_01HXYZLORA",
+      "history_event_written": true
+    },
+    {
+      "output_type": "proof_image",
+      "status": "complete",
+      "artifact_path": "/nas/outputs/char_01HXYZEXAMPLE/proof/image_0001.png",
+      "artifact_exists": true,
+      "job_public_id": "job_01HXYZPROOF",
+      "history_event_written": true
+    }
+  ]
+}

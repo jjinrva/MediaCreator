@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
 from app.schemas.jobs import JobDetailResponse
-from app.services.jobs import get_job_by_public_id
+from app.services.jobs import get_job_by_public_id, get_job_history, serialize_job
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
 
@@ -19,4 +19,4 @@ def read_job(
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
-    return JobDetailResponse.model_validate(job)
+    return JobDetailResponse.model_validate(serialize_job(job, get_job_history(session, job.id)))

@@ -4,13 +4,13 @@ Phase 20 defines the first explicit LoRA training-set contract for MediaCreator.
 
 ## Dataset selection rules
 
-The dataset service uses only the character’s accepted reference set.
+The dataset service uses only the character’s LoRA-qualified accepted reference subset.
 
 Current rules:
 
-- source images come from the prepared normalized photos, not raw uploads
+- source images come from the persisted LoRA derivatives, not raw uploads
 - the dataset is versioned as `dataset-v1`
-- the manifest records source entry IDs, source photo asset IDs, copied image files, and caption files
+- the manifest records source entry IDs, source photo asset IDs, source derivative paths, copied image files, and caption files
 - one dataset root exists per character per dataset version under the NAS-backed LoRA storage tree
 
 This keeps lineage back to the capture set explicit and auditable.

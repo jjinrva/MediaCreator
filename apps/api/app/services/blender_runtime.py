@@ -23,6 +23,11 @@ from app.services.jobs import (
     get_system_actor_id,
 )
 from app.services.motion_library import get_character_motion_assignment
+from app.services.photo_prep import (
+    is_bucket_accepted_for_character_use,
+    is_bucket_body_qualified,
+    is_qc_status_accepted_for_character_use,
+)
 from app.services.pose_state import get_character_pose_state_payload
 from app.services.storage_service import resolve_storage_layout
 from app.services.texture_pipeline import ensure_character_base_texture
@@ -87,9 +92,25 @@ def _input_asset_paths(session: Session, photoset_asset_id: uuid.UUID) -> list[s
     ).all()
 
     for entry in photoset_entries:
-        storage_object = session.get(StorageObject, entry.normalized_storage_object_id)
+        accepted_for_character_use = (
+            is_bucket_accepted_for_character_use(entry.bucket)
+            if entry.bucket
+            else is_qc_status_accepted_for_character_use(entry.qc_status)
+        )
+        if not accepted_for_character_use:
+            continue
+
+        preferred_storage_object_id = entry.normalized_storage_object_id
+        if (
+            entry.bucket
+            and is_bucket_body_qualified(entry.bucket)
+            and entry.body_derivative_storage_object_id is not None
+        ):
+            preferred_storage_object_id = entry.body_derivative_storage_object_id
+
+        storage_object = session.get(StorageObject, preferred_storage_object_id)
         if storage_object is None:
-            raise LookupError("Normalized storage object not found for photoset entry.")
+            raise LookupError("Prepared storage object not found for character export input.")
         paths.append(storage_object.storage_path)
 
     return paths

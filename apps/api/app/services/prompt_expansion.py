@@ -199,6 +199,15 @@ def _registry_payload(
     }
 
 
+def _registry_storage_has_artifact(session: Session, registry_entry: ModelRegistry) -> bool:
+    if registry_entry.storage_object_id is None:
+        return False
+    storage_object = session.get(StorageObject, registry_entry.storage_object_id)
+    if storage_object is None:
+        return False
+    return Path(storage_object.storage_path).exists()
+
+
 def list_local_lora_options(session: Session) -> list[dict[str, object]]:
     payloads: list[dict[str, object]] = []
     registry_entries = list(
@@ -210,6 +219,8 @@ def list_local_lora_options(session: Session) -> list[dict[str, object]]:
         ).all()
     )
     for entry in registry_entries:
+        if not _registry_storage_has_artifact(session, entry):
+            continue
         asset = session.get(Asset, entry.character_asset_id)
         if asset is None or asset.asset_type != "character":
             continue

@@ -40,5 +40,5 @@ files = ["src"]
 mypy_path = ["src", "../api"]
 
 [[tool.mypy.overrides]]
-module = ["cv2", "mediapipe", "mediapipe.*", "numpy", "PIL"]
+module = ["cv2", "mediapipe", "mediapipe.*", "numpy", "PIL", "rembg", "rembg.*"]
 ignore_missing_imports = true

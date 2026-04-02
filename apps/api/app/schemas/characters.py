@@ -10,7 +10,10 @@ class CharacterAcceptedEntryResponse(BaseModel):
     public_id: uuid.UUID
     photo_asset_public_id: uuid.UUID
     original_filename: str
+    bucket: str
     qc_status: str
+    reason_codes: list[str]
+    reason_messages: list[str]
     framing_label: str
     artifact_urls: PhotosetEntryArtifactUrls
 

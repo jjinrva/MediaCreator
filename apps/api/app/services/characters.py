@@ -15,6 +15,9 @@ from app.services.jobs import get_system_actor_id
 from app.services.photo_prep import (
     get_photoset_asset,
     get_photoset_payload,
+    is_bucket_accepted_for_character_use,
+    is_bucket_body_qualified,
+    is_bucket_lora_qualified,
     is_qc_status_accepted_for_character_use,
 )
 from app.services.pose_state import initialize_pose_state_rows
@@ -119,14 +122,33 @@ def create_character_from_photoset(
     accepted_entries = [
         entry
         for entry in photoset_entries
-        if is_qc_status_accepted_for_character_use(entry.qc_status)
+        if (
+            is_bucket_accepted_for_character_use(entry.bucket)
+            if entry.bucket
+            else is_qc_status_accepted_for_character_use(entry.qc_status)
+        )
     ]
     if not accepted_entries:
         raise ValueError("Photoset has no accepted entries for character creation.")
 
+    body_entries = [
+        entry
+        for entry in accepted_entries
+        if entry.bucket and is_bucket_body_qualified(entry.bucket)
+    ]
+    lora_entries = [
+        entry
+        for entry in accepted_entries
+        if entry.bucket and is_bucket_lora_qualified(entry.bucket)
+    ]
+
     actor_id = get_system_actor_id(session)
     accepted_entry_public_ids = [str(entry.public_id) for entry in accepted_entries]
     accepted_photo_asset_ids = [str(entry.photo_asset_id) for entry in accepted_entries]
+    body_entry_public_ids = [str(entry.public_id) for entry in body_entries]
+    body_photo_asset_ids = [str(entry.photo_asset_id) for entry in body_entries]
+    lora_entry_public_ids = [str(entry.public_id) for entry in lora_entries]
+    lora_photo_asset_ids = [str(entry.photo_asset_id) for entry in lora_entries]
     photoset_created_event = _photoset_created_event(session, photoset_asset.id)
     character_label = _label_from_event(photoset_created_event)
 
@@ -150,6 +172,10 @@ def create_character_from_photoset(
         details={
             "accepted_entry_count": len(accepted_entries),
             "accepted_entry_public_ids": accepted_entry_public_ids,
+            "accepted_body_entry_count": len(body_entries),
+            "accepted_body_entry_public_ids": body_entry_public_ids,
+            "accepted_lora_entry_count": len(lora_entries),
+            "accepted_lora_entry_public_ids": lora_entry_public_ids,
             "body_parameter_profile": "body-v1",
             "character_label": character_label,
             "photoset_public_id": str(photoset_asset.public_id),
@@ -164,6 +190,10 @@ def create_character_from_photoset(
         details={
             "accepted_entry_public_ids": accepted_entry_public_ids,
             "accepted_photo_asset_ids": accepted_photo_asset_ids,
+            "body_entry_public_ids": body_entry_public_ids,
+            "body_photo_asset_ids": body_photo_asset_ids,
+            "lora_entry_public_ids": lora_entry_public_ids,
+            "lora_photo_asset_ids": lora_photo_asset_ids,
             "photoset_public_id": str(photoset_asset.public_id),
             "source_asset_public_id": str(photoset_asset.public_id),
         },
@@ -225,7 +255,10 @@ def get_character_payload(
                 "public_id": entry["public_id"],
                 "photo_asset_public_id": entry["photo_asset_public_id"],
                 "original_filename": entry["original_filename"],
+                "bucket": entry["bucket"],
                 "qc_status": entry["qc_status"],
+                "reason_codes": entry["reason_codes"],
+                "reason_messages": entry["reason_messages"],
                 "framing_label": qc_metrics["framing_label"],
                 "artifact_urls": entry["artifact_urls"],
             }

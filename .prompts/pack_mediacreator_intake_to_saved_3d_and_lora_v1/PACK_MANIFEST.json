@@ -1,0 +1,38 @@
+{
+  "pack_id": "pack_mediacreator_intake_to_saved_3d_and_lora_v1",
+  "title": "MediaCreator intake to saved 3D and LoRA",
+  "target_repo_or_app": "MediaCreator",
+  "created_date": "2026-04-02",
+  "author": "OpenAI GPT-5.4 Pro",
+  "follows": [
+    "repo_current_prompt_pack/.prompts/pack_mediacreator_rebuild_v1/",
+    "historical_prompt_packs/mediacreator_runtime_repair_pack_v1/"
+  ],
+  "experts_used": [
+    "/experts/HUMAN_CAPTURE_AND_QC_EXPERT.md",
+    "/experts/DIFFUSION_COMFYUI_AND_LORA_EXPERT.md",
+    "/experts/BLENDER_RIGGING_AND_GLTF_EXPERT.md",
+    "/experts/FRONTEND_APP_ROUTER_AND_ACCESSIBILITY_EXPERT.md",
+    "/experts/FASTAPI_DOMAIN_ARCHITECT.md",
+    "/experts/QA_VERIFICATION_EXPERT.md"
+  ],
+  "agent_files_used": [],
+  "ordered_phases": [
+    "phase_01_backend_ingest_progress_and_person_first_routing",
+    "phase_02_frontend_intake_truth_label_and_thumbnail_preview",
+    "phase_03_preprocessing_derivatives_and_dataset_manifests",
+    "phase_04_base_character_creation_and_saved_3d_output",
+    "phase_05_lora_training_registry_and_proof_generation",
+    "phase_06_end_to_end_acceptance_and_truth_gates"
+  ],
+  "expected_outputs": [
+    "truthful upload and scan progress",
+    "per-image classification buckets and reasons",
+    "required character label with duplicate labels allowed",
+    "click-to-enlarge thumbnail inspection UI",
+    "saved derivative lineage for LoRA and 3D inputs",
+    "saved character record and saved GLB output",
+    "saved LoRA artifact and saved proof image when AI Toolkit is operational",
+    "deterministic tests and verification reports"
+  ]
+}

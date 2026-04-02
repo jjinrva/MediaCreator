@@ -14,6 +14,11 @@ from app.main import app
 from app.models.history_event import HistoryEvent
 from app.models.storage_object import StorageObject
 from tests.db_test_utils import migrated_database
+from tests.test_photo_derivatives_and_manifests import (
+    _build_qc_report,
+    _patch_derivative_artifacts,
+    _patch_deterministic_qc,
+)
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -42,6 +47,19 @@ def _sample_image_bytes(filename: str) -> bytes:
 def test_lora_dataset_route_writes_dataset_files_manifest_and_prompt_contract(
     monkeypatch: MonkeyPatch,
 ) -> None:
+    _patch_deterministic_qc(
+        monkeypatch,
+        [
+            _build_qc_report(
+                "body_only",
+                reason_codes=["face_required_for_lora"],
+                reason_messages=["Face evidence was not detected for LoRA training."],
+            ),
+            _build_qc_report("both"),
+        ],
+    )
+    _patch_derivative_artifacts(monkeypatch)
+
     with migrated_database("lora_dataset_api") as database_url:
         engine, session_factory = _session_factory(database_url)
         app.dependency_overrides[get_db_session] = _override_db_session(session_factory)
@@ -107,7 +125,7 @@ def test_lora_dataset_route_writes_dataset_files_manifest_and_prompt_contract(
                     assert dataset_response.status_code == 200
                     payload = dataset_response.json()
                     assert payload["dataset"]["status"] == "available"
-                    assert payload["dataset"]["entry_count"] == 2
+                    assert payload["dataset"]["entry_count"] == 1
                     assert payload["dataset"]["prompt_handle"].startswith("@character_")
                     assert payload["dataset"]["prompt_expansion"]
 
@@ -117,7 +135,7 @@ def test_lora_dataset_route_writes_dataset_files_manifest_and_prompt_contract(
                     assert manifest_response.status_code == 200
                     manifest = manifest_response.json()
                     assert manifest["dataset_version"] == "dataset-v1"
-                    assert manifest["entry_count"] == 2
+                    assert manifest["entry_count"] == 1
                     assert manifest["prompt_contract"]["version"] == "prompt-contract-v1"
                     assert (
                         manifest["prompt_contract"]["handle"]
@@ -125,6 +143,10 @@ def test_lora_dataset_route_writes_dataset_files_manifest_and_prompt_contract(
                     )
                     assert manifest["entries"][0]["image_file"].endswith(".png")
                     assert manifest["entries"][0]["caption_file"].endswith(".txt")
+                    assert manifest["entries"][0]["bucket"] == "both"
+                    assert manifest["entries"][0]["source_derivative_path"].endswith(
+                        "lora-normalized.png"
+                    )
 
                 with session_factory() as session:
                     manifest_storage = session.scalar(

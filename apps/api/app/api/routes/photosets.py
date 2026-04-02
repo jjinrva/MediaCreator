@@ -1,4 +1,7 @@
+import shutil
+import tempfile
 import uuid
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -7,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
 from app.schemas.photosets import PhotosetDetailResponse
+from app.services import photo_prep
 from app.services.photo_prep import (
     IncomingPhotoUpload,
     get_artifact_storage_object,
@@ -17,6 +21,49 @@ from app.services.photo_prep import (
 router = APIRouter(prefix="/api/v1/photosets", tags=["photosets"])
 
 
+async def _stage_upload(upload: UploadFile, staged_root: Path) -> IncomingPhotoUpload:
+    filename = upload.filename or "upload"
+    media_type = photo_prep.resolve_upload_media_type(filename, upload.content_type)
+    if media_type not in photo_prep.ALLOWED_IMAGE_MEDIA_TYPES:
+        raise ValueError(f"Unsupported media type for '{filename}': {media_type}")
+
+    staged_path = staged_root / (
+        f"{uuid.uuid4()}{photo_prep.extension_for_upload_filename(filename, media_type)}"
+    )
+    byte_size = 0
+
+    try:
+        with staged_path.open("wb") as staged_file:
+            while True:
+                chunk = await upload.read(photo_prep.UPLOAD_WRITE_CHUNK_SIZE_BYTES)
+                if not chunk:
+                    break
+                byte_size += len(chunk)
+                if byte_size > photo_prep.MAX_UPLOAD_FILE_SIZE_BYTES:
+                    raise ValueError(
+                        "File "
+                        f"'{filename}' exceeds the {photo_prep.MAX_UPLOAD_FILE_SIZE_BYTES} byte "
+                        "upload limit."
+                    )
+                staged_file.write(chunk)
+    except Exception:
+        staged_path.unlink(missing_ok=True)
+        raise
+    finally:
+        await upload.close()
+
+    if byte_size <= 0:
+        staged_path.unlink(missing_ok=True)
+        raise ValueError(f"Uploaded file '{filename}' is empty.")
+
+    return IncomingPhotoUpload(
+        byte_size=byte_size,
+        filename=filename,
+        media_type=media_type,
+        staged_path=staged_path,
+    )
+
+
 @router.post("", response_model=PhotosetDetailResponse, status_code=201)
 async def create_photoset(
     request: Request,
@@ -24,30 +71,32 @@ async def create_photoset(
     character_label: str | None = Form(None),
     db_session: Session = Depends(get_db_session),
 ) -> PhotosetDetailResponse:
-    uploads: list[IncomingPhotoUpload] = []
-
-    for upload in photos:
-        uploads.append(
-            IncomingPhotoUpload(
-                content=await upload.read(),
-                filename=upload.filename or "upload",
-                media_type=upload.content_type,
-            )
+    if len(photos) > photo_prep.MAX_UPLOAD_FILE_COUNT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A photoset may contain at most {photo_prep.MAX_UPLOAD_FILE_COUNT} files.",
         )
 
+    uploads: list[IncomingPhotoUpload] = []
+    staged_root = Path(tempfile.mkdtemp(prefix="mediacreator-intake-"))
+
     try:
+        for upload in photos:
+            uploads.append(await _stage_upload(upload, staged_root))
         with db_session.begin():
-            photoset_asset = ingest_photoset(
+            ingest_result = ingest_photoset(
                 db_session,
                 uploads,
                 character_label=character_label,
             )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        shutil.rmtree(staged_root, ignore_errors=True)
 
     payload = get_photoset_payload(
         db_session,
-        photoset_asset.public_id,
+        ingest_result.photoset_asset.public_id,
         api_base_url=str(request.base_url).rstrip("/"),
     )
     if payload is None:  # pragma: no cover - guarded by same transaction above
@@ -75,7 +124,7 @@ def get_photoset_detail(
 def get_photoset_artifact(
     photoset_public_id: uuid.UUID,
     entry_public_id: uuid.UUID,
-    variant: Literal["original", "normalized", "thumbnail"],
+    variant: Literal["body", "lora", "original", "normalized", "thumbnail"],
     db_session: Session = Depends(get_db_session),
 ) -> FileResponse:
     storage_object = get_artifact_storage_object(

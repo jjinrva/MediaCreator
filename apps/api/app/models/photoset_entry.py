@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String, text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,6 +39,31 @@ class PhotosetEntry(UUIDIdentityMixin, TimestampMixin, Base):
         nullable=False,
         server_default=text("'[]'::jsonb"),
     )
+    bucket: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=text("'rejected'"),
+    )
+    usable_for_lora: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+    )
+    usable_for_body: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+    )
+    reason_codes: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
+    reason_messages: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
     framing_label: Mapped[str | None] = mapped_column(String(50), nullable=True)
     original_storage_object_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -54,4 +79,14 @@ class PhotosetEntry(UUIDIdentityMixin, TimestampMixin, Base):
         UUID(as_uuid=True),
         ForeignKey("storage_objects.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    body_derivative_storage_object_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("storage_objects.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    lora_derivative_storage_object_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("storage_objects.id", ondelete="SET NULL"),
+        nullable=True,
     )

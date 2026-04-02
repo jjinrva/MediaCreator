@@ -1,0 +1,26 @@
+{
+  "photoset_public_id": "pset_01HXYZEXAMPLE",
+  "entry_public_id": "pentry_01HXYZEXAMPLE",
+  "character_label": "Jeremy Test Character",
+  "has_person": true,
+  "face_detected": false,
+  "body_detected": true,
+  "blur_score": 87.2,
+  "min_blur_for_lora": 120.0,
+  "min_blur_for_body": 60.0,
+  "exposure_score": 0.71,
+  "framing_label": "full_body",
+  "occlusion_label": "low",
+  "resolution_ok": true,
+  "usable_for_lora": false,
+  "usable_for_body": true,
+  "bucket": "body_only",
+  "reason_codes": [
+    "body_evidence_strong",
+    "face_not_visible_for_lora"
+  ],
+  "reason_messages": [
+    "Body evidence is strong enough for body modeling.",
+    "No usable face was visible, so the image is excluded from the LoRA set."
+  ]
+}

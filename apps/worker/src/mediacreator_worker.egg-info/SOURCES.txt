@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+src/mediacreator_worker/__init__.py
+src/mediacreator_worker/main.py
+src/mediacreator_worker.egg-info/PKG-INFO
+src/mediacreator_worker.egg-info/SOURCES.txt
+src/mediacreator_worker.egg-info/dependency_links.txt
+src/mediacreator_worker.egg-info/entry_points.txt
+src/mediacreator_worker.egg-info/requires.txt
+src/mediacreator_worker.egg-info/top_level.txt

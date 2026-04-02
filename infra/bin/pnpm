@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PNPM_CLI="$SCRIPT_DIR/../pnpm/node_modules/pnpm/bin/pnpm.cjs"
+
+if [[ ! -f "$PNPM_CLI" ]]; then
+  echo "MediaCreator pnpm runtime is missing. Run 'make install' first." >&2
+  exit 1
+fi
+
+exec "$SCRIPT_DIR/node" "$PNPM_CLI" "$@"

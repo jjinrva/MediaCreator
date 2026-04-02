@@ -1,0 +1,16 @@
+{
+  "name": "mediacreator",
+  "private": true,
+  "version": "0.1.0-pack",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22 <23",
+    "pnpm": ">=9 <10"
+  },
+  "scripts": {
+    "lint": "make lint",
+    "typecheck": "make typecheck",
+    "test:api": "make test-api",
+    "test:web": "make test-web"
+  }
+}

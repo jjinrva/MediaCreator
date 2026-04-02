@@ -1,0 +1,7 @@
+{
+  "workflow_id": "text_to_image_v1",
+  "version": 1,
+  "purpose": "Baseline ComfyUI text-to-image capability contract placeholder for MediaCreator.",
+  "provider": "comfyui",
+  "nodes": []
+}

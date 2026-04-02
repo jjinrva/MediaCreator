@@ -1,0 +1,7 @@
+{
+  "workflow_id": "character_refine_img2img_v1",
+  "version": 1,
+  "purpose": "Character refinement img2img capability contract placeholder for MediaCreator.",
+  "provider": "comfyui",
+  "nodes": []
+}

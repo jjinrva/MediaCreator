@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mediacreator-worker"
+version = "0.1.0"
+description = "MediaCreator PostgreSQL-backed worker application."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.7,<3",
+  "psycopg[binary]>=3.2,<4",
+  "sqlalchemy>=2.0,<3"
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.11,<2",
+  "ruff>=0.6,<1"
+]
+
+[project.scripts]
+mediacreator-worker = "mediacreator_worker.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mediacreator_worker*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+mypy_path = ["src", "../api"]
+
+[[tool.mypy.overrides]]
+module = ["cv2", "mediapipe", "mediapipe.*", "numpy", "PIL", "PIL.*"]
+ignore_missing_imports = true

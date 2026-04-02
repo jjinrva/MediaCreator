@@ -1,0 +1,21 @@
+
+Read `/AGENTS.md`, `/PLANS.md`, `/.prompts/pack_mediacreator_rebuild_v1/SOURCES.md`, `/.prompts/pack_mediacreator_rebuild_v1/STACK_DECISIONS.md`, `/.prompts/pack_mediacreator_rebuild_v1/MASTER_RUN.md`, and `/.prompts/pack_mediacreator_rebuild_v1/RUN_ORDER.md`.
+
+Then rebuild MediaCreator from scratch by executing all phases in order.
+
+For each phase:
+- read the build file
+- read the named experts
+- follow the exact chosen path only
+- update the phase report
+- read the paired verify file
+- run the exact verification
+- update the verify report
+- stop immediately if the verify phase fails
+
+Do not introduce alternative frameworks or optional branches.
+Do not skip failed steps.
+Do not seed runtime with fake data.
+Do not claim a feature works unless it is verified.
+
+Begin with Phase 01.

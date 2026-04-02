@@ -1,0 +1,22 @@
+{
+  "version": "rigify_proxy_export_v1",
+  "blender_script": "scripts/blender/rigify_proxy_export.py",
+  "export_format": "GLB",
+  "rig_baseline": "Rigify human metarig -> generated rig",
+  "body_shape_keys": {
+    "height_scale": "height_scale",
+    "shoulder_width": "shoulder_width",
+    "chest_volume": "chest_volume",
+    "waist_width": "waist_width",
+    "hip_width": "hip_width",
+    "upper_arm_volume": "upper_arm_volume",
+    "thigh_volume": "thigh_volume",
+    "calf_volume": "calf_volume"
+  },
+  "pose_control_bones": {
+    "upper_arm_l_pitch_deg": "upper_arm_fk.L",
+    "upper_arm_r_pitch_deg": "upper_arm_fk.R",
+    "thigh_l_pitch_deg": "thigh_fk.L",
+    "thigh_r_pitch_deg": "thigh_fk.R"
+  }
+}

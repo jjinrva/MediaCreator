@@ -1,11 +1,35 @@
 import json
+from collections.abc import Callable, Generator
 from pathlib import Path
 
 from _pytest.monkeypatch import MonkeyPatch
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
+from app.db.session import get_db_session
 from app.main import app
 from app.services.generation_provider import REQUIRED_WORKFLOW_FILES, get_generation_capability
+from tests.db_test_utils import migrated_database
+
+
+def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
+    engine = create_engine(database_url, pool_pre_ping=True)
+    return engine, sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+def _override_db_session(
+    session_factory: sessionmaker[Session],
+) -> Callable[[], Generator[Session, None, None]]:
+    def _dependency() -> Generator[Session, None, None]:
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    return _dependency
 
 
 def _configure_generation_env(monkeypatch: MonkeyPatch, tmp_path: Path) -> Path:
@@ -56,57 +80,73 @@ def _write_required_workflows(workflows_root: Path) -> None:
 def test_system_status_reports_unavailable_when_comfyui_is_absent(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("MEDIACREATOR_STORAGE_NAS_ROOT", str(tmp_path / "missing-nas"))
-    monkeypatch.setenv("MEDIACREATOR_STORAGE_SCRATCH_ROOT", str(tmp_path / "scratch"))
-    monkeypatch.delenv("MEDIACREATOR_COMFYUI_BASE_URL", raising=False)
-    monkeypatch.setenv(
-        "MEDIACREATOR_COMFYUI_WORKFLOWS_ROOT",
-        str(tmp_path / "missing-workflows"),
-    )
-    client = TestClient(app)
+    with migrated_database("generation_provider_missing") as database_url:
+        engine, session_factory = _session_factory(database_url)
+        app.dependency_overrides[get_db_session] = _override_db_session(session_factory)
 
-    response = client.get("/api/v1/system/status")
+        monkeypatch.setenv("MEDIACREATOR_STORAGE_NAS_ROOT", str(tmp_path / "missing-nas"))
+        monkeypatch.setenv("MEDIACREATOR_STORAGE_SCRATCH_ROOT", str(tmp_path / "scratch"))
+        monkeypatch.delenv("MEDIACREATOR_COMFYUI_BASE_URL", raising=False)
+        monkeypatch.setenv(
+            "MEDIACREATOR_COMFYUI_WORKFLOWS_ROOT",
+            str(tmp_path / "missing-workflows"),
+        )
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["generation"]["status"] == "unavailable"
-    assert payload["generation"]["comfyui_base_url"] is None
-    assert payload["generation"]["comfyui_service_reachable"] is False
-    assert "comfyui_base_url_missing" in payload["generation"]["missing_requirements"]
-    assert "workflows_root_missing" in payload["generation"]["missing_requirements"]
-    assert payload["generation"]["status"] != "ready"
+        try:
+            client = TestClient(app)
+            response = client.get("/api/v1/system/status")
+
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["generation"]["status"] == "unavailable"
+            assert payload["generation"]["comfyui_base_url"] is None
+            assert payload["generation"]["comfyui_service_reachable"] is False
+            assert "comfyui_base_url_missing" in payload["generation"]["missing_requirements"]
+            assert "workflows_root_missing" in payload["generation"]["missing_requirements"]
+            assert payload["generation"]["status"] != "ready"
+        finally:
+            app.dependency_overrides.clear()
+            engine.dispose()
 
 
 def test_system_status_validates_workflows_and_nas_model_roots(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    workflows_root = _configure_generation_env(monkeypatch, tmp_path)
-    _write_required_workflows(workflows_root)
-    checkpoints_root = tmp_path / "nas" / "models" / "checkpoints"
-    vaes_root = tmp_path / "nas" / "models" / "vaes"
-    (checkpoints_root / "sdxl-base.safetensors").write_text("checkpoint", encoding="utf-8")
-    (vaes_root / "sdxl.vae.pt").write_text("vae", encoding="utf-8")
-    monkeypatch.setattr(
-        "app.services.generation_provider.ping_comfyui_service",
-        lambda _base_url: True,
-    )
-    client = TestClient(app)
+    with migrated_database("generation_provider_ready") as database_url:
+        engine, session_factory = _session_factory(database_url)
+        app.dependency_overrides[get_db_session] = _override_db_session(session_factory)
 
-    response = client.get("/api/v1/system/status")
+        workflows_root = _configure_generation_env(monkeypatch, tmp_path)
+        _write_required_workflows(workflows_root)
+        checkpoints_root = tmp_path / "nas" / "models" / "checkpoints"
+        vaes_root = tmp_path / "nas" / "models" / "vaes"
+        (checkpoints_root / "sdxl-base.safetensors").write_text("checkpoint", encoding="utf-8")
+        (vaes_root / "sdxl.vae.pt").write_text("vae", encoding="utf-8")
+        monkeypatch.setattr(
+            "app.services.generation_provider.ping_comfyui_service",
+            lambda _base_url: True,
+        )
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["generation"]["status"] == "ready"
-    assert payload["generation"]["model_roots_on_nas"] is True
-    assert payload["generation"]["missing_workflow_files"] == []
-    assert payload["generation"]["checkpoint_files_detected"] == ["sdxl-base.safetensors"]
-    assert payload["generation"]["vae_files_detected"] == ["sdxl.vae.pt"]
-    assert payload["generation"]["checkpoints_root"] == str(checkpoints_root)
-    assert payload["generation"]["vaes_root"] == str(vaes_root)
-    assert payload["generation"]["embeddings_root"] == str(
-        tmp_path / "nas" / "models" / "embeddings"
-    )
-    assert payload["generation"]["workflows_root"] == str(workflows_root)
+        try:
+            client = TestClient(app)
+            response = client.get("/api/v1/system/status")
+
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["generation"]["status"] == "ready"
+            assert payload["generation"]["model_roots_on_nas"] is True
+            assert payload["generation"]["missing_workflow_files"] == []
+            assert payload["generation"]["checkpoint_files_detected"] == ["sdxl-base.safetensors"]
+            assert payload["generation"]["vae_files_detected"] == ["sdxl.vae.pt"]
+            assert payload["generation"]["checkpoints_root"] == str(checkpoints_root)
+            assert payload["generation"]["vaes_root"] == str(vaes_root)
+            assert payload["generation"]["embeddings_root"] == str(
+                tmp_path / "nas" / "models" / "embeddings"
+            )
+            assert payload["generation"]["workflows_root"] == str(workflows_root)
+        finally:
+            app.dependency_overrides.clear()
+            engine.dispose()
 
 
 def test_generation_capability_reports_partial_state_when_service_is_unreachable(

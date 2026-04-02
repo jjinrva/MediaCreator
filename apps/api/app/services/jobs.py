@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.models.actor import Actor
 from app.models.history_event import HistoryEvent
 from app.models.job import Job
+from app.models.service_heartbeat import ServiceHeartbeat
+
+WORKER_SERVICE_NAME = "worker"
+DEFAULT_WORKER_HEARTBEAT_STALE_AFTER_SECONDS = 15
 
 
 class JobState(StrEnum):
@@ -111,6 +115,10 @@ def _job_query() -> Select[tuple[Job]]:
     return select(Job).order_by(Job.created_at.asc())
 
 
+def _service_heartbeat_query() -> Select[tuple[ServiceHeartbeat]]:
+    return select(ServiceHeartbeat).order_by(ServiceHeartbeat.created_at.asc())
+
+
 def _append_job_history_event(
     session: Session,
     actor_id: uuid.UUID,
@@ -132,6 +140,79 @@ def _append_job_history_event(
 def get_system_actor_id(session: Session, handle: str = "god") -> uuid.UUID:
     actor_id = session.execute(select(Actor.id).where(Actor.handle == handle)).scalar_one()
     return actor_id
+
+
+def get_service_heartbeat(
+    session: Session,
+    service_name: str,
+) -> ServiceHeartbeat | None:
+    return session.execute(
+        _service_heartbeat_query().where(ServiceHeartbeat.service_name == service_name)
+    ).scalar_one_or_none()
+
+
+def upsert_service_heartbeat(
+    session: Session,
+    *,
+    service_name: str,
+    detail: str,
+) -> ServiceHeartbeat:
+    heartbeat = get_service_heartbeat(session, service_name)
+    if heartbeat is None:
+        heartbeat = ServiceHeartbeat(
+            service_name=service_name,
+            detail=detail,
+            last_seen_at=_now(),
+        )
+        session.add(heartbeat)
+    else:
+        heartbeat.detail = detail
+        heartbeat.last_seen_at = _now()
+    session.flush()
+    return heartbeat
+
+
+def get_service_heartbeat_payload(
+    session: Session,
+    service_name: str,
+    *,
+    stale_after_seconds: int = DEFAULT_WORKER_HEARTBEAT_STALE_AFTER_SECONDS,
+) -> dict[str, object]:
+    heartbeat = get_service_heartbeat(session, service_name)
+    if heartbeat is None:
+        return {
+            "service_name": service_name,
+            "status": "offline",
+            "detail": f"No heartbeat has been recorded for the '{service_name}' service yet.",
+            "last_seen_at": None,
+            "seconds_since_heartbeat": None,
+            "stale_after_seconds": stale_after_seconds,
+        }
+
+    seconds_since_heartbeat = max(
+        0,
+        int((_now() - heartbeat.last_seen_at).total_seconds()),
+    )
+    if seconds_since_heartbeat > stale_after_seconds:
+        status = "stale"
+        detail = (
+            f"The '{service_name}' heartbeat is stale. Last seen "
+            f"{seconds_since_heartbeat}s ago while reporting '{heartbeat.detail}'."
+        )
+    else:
+        status = "ready"
+        detail = (
+            f"The '{service_name}' heartbeat is current and reports '{heartbeat.detail}'."
+        )
+
+    return {
+        "service_name": service_name,
+        "status": status,
+        "detail": detail,
+        "last_seen_at": heartbeat.last_seen_at,
+        "seconds_since_heartbeat": seconds_since_heartbeat,
+        "stale_after_seconds": stale_after_seconds,
+    }
 
 
 def enqueue_job(

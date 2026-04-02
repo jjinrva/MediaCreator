@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKER_BIN="$ROOT_DIR/apps/worker/.venv/bin/mediacreator-worker"
+API_PYTHON="$ROOT_DIR/apps/api/.venv/bin/python"
 
 if [[ -f "$ROOT_DIR/.env" ]]; then
   set -a
@@ -11,11 +11,11 @@ if [[ -f "$ROOT_DIR/.env" ]]; then
   set +a
 fi
 
-if [[ ! -x "$WORKER_BIN" ]]; then
-  echo "MediaCreator worker environment is missing. Run 'make bootstrap-worker' or 'make bootstrap' first." >&2
+if [[ ! -x "$API_PYTHON" ]]; then
+  echo "MediaCreator API environment is missing. Run 'make bootstrap-api' or 'make bootstrap' first." >&2
   exit 1
 fi
 
 export PYTHONPATH="$ROOT_DIR/apps/api:$ROOT_DIR/apps/worker/src${PYTHONPATH:+:$PYTHONPATH}"
 
-exec "$WORKER_BIN"
+exec "$API_PYTHON" -m mediacreator_worker.main

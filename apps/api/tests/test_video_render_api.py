@@ -15,6 +15,7 @@ from app.models.asset import Asset
 from app.models.history_event import HistoryEvent
 from app.models.job import Job
 from app.models.storage_object import StorageObject
+from app.services.jobs import run_worker_once
 from tests.db_test_utils import migrated_database
 
 
@@ -68,8 +69,8 @@ def _create_character(client: TestClient) -> str:
             (
                 "photos",
                 (
-                    "male_body_front.png",
-                    _sample_image_bytes("male_body_front.png"),
+                    "male_head_front.png",
+                    _sample_image_bytes("male_head_front.png"),
                     "image/png",
                 ),
             )
@@ -117,9 +118,33 @@ def test_video_render_creates_a_real_mp4_with_character_and_motion_lineage(
                         f"/api/v1/video/characters/{character_public_id}/render",
                         json={"width": 320, "height": 320, "duration_seconds": 1.1},
                     )
-                    assert render_response.status_code == 200
+                    assert render_response.status_code == 202
+                    queued_payload = render_response.json()
+                    assert queued_payload["status"] == "queued"
+                    assert queued_payload["step_name"] == "queued"
+                    assert queued_payload["progress_percent"] == 0
 
-                    render_payload = render_response.json()
+                    render_payload = client.get("/api/v1/video").json()
+                    rendered_character = next(
+                        item
+                        for item in render_payload["characters"]
+                        if item["public_id"] == character_public_id
+                    )
+                    assert rendered_character["render_job"]["status"] == "queued"
+                    assert (
+                        rendered_character["render_job"]["job_public_id"]
+                        == queued_payload["job_public_id"]
+                    )
+                    latest_video = rendered_character["latest_video"]
+                    assert latest_video is not None
+                    assert latest_video["motion_name"] == "Jump"
+                    assert latest_video["job_public_id"] is not None
+                    assert latest_video["url"] is None
+
+                assert run_worker_once(session_factory) == "completed"
+
+                with TestClient(app) as client:
+                    render_payload = client.get("/api/v1/video").json()
                     rendered_character = next(
                         item
                         for item in render_payload["characters"]
@@ -127,8 +152,6 @@ def test_video_render_creates_a_real_mp4_with_character_and_motion_lineage(
                     )
                     latest_video = rendered_character["latest_video"]
                     assert latest_video is not None
-                    assert latest_video["motion_name"] == "Jump"
-                    assert latest_video["job_public_id"] is not None
                     assert latest_video["url"] is not None
 
                     video_response = client.get(
@@ -175,6 +198,7 @@ def test_video_render_creates_a_real_mp4_with_character_and_motion_lineage(
                     assert video_asset.status == "available"
                     assert job.job_type == "character-motion-video-render"
                     assert job.status == "completed"
+                    assert job.step_name == "completed"
                     assert storage_object is not None
                     assert Path(storage_object.storage_path).exists()
                     assert storage_object.byte_size is not None

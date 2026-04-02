@@ -12,7 +12,11 @@ from app.models.photoset_entry import PhotosetEntry
 from app.services.body_parameters import initialize_body_parameter_rows
 from app.services.facial_parameters import initialize_facial_parameter_rows
 from app.services.jobs import get_system_actor_id
-from app.services.photo_prep import get_photoset_asset, get_photoset_payload
+from app.services.photo_prep import (
+    get_photoset_asset,
+    get_photoset_payload,
+    is_qc_status_accepted_for_character_use,
+)
 from app.services.pose_state import initialize_pose_state_rows
 
 
@@ -112,9 +116,17 @@ def create_character_from_photoset(
     if not photoset_entries:
         raise ValueError("Photoset has no prepared entries.")
 
+    accepted_entries = [
+        entry
+        for entry in photoset_entries
+        if is_qc_status_accepted_for_character_use(entry.qc_status)
+    ]
+    if not accepted_entries:
+        raise ValueError("Photoset has no accepted entries for character creation.")
+
     actor_id = get_system_actor_id(session)
-    accepted_entry_public_ids = [str(entry.public_id) for entry in photoset_entries]
-    accepted_photo_asset_ids = [str(entry.photo_asset_id) for entry in photoset_entries]
+    accepted_entry_public_ids = [str(entry.public_id) for entry in accepted_entries]
+    accepted_photo_asset_ids = [str(entry.photo_asset_id) for entry in accepted_entries]
     photoset_created_event = _photoset_created_event(session, photoset_asset.id)
     character_label = _label_from_event(photoset_created_event)
 
@@ -136,7 +148,7 @@ def create_character_from_photoset(
         actor_id,
         asset_id=character_asset.id,
         details={
-            "accepted_entry_count": len(photoset_entries),
+            "accepted_entry_count": len(accepted_entries),
             "accepted_entry_public_ids": accepted_entry_public_ids,
             "body_parameter_profile": "body-v1",
             "character_label": character_label,
@@ -201,7 +213,10 @@ def get_character_payload(
     photoset_entries = cast(list[dict[str, object]], photoset_payload["entries"])
     accepted_entries: list[dict[str, object]] = []
     for entry in photoset_entries:
+        accepted_for_character_use = bool(entry.get("accepted_for_character_use"))
         if accepted_entry_ids and str(entry["public_id"]) not in accepted_entry_ids:
+            continue
+        if not accepted_entry_ids and not accepted_for_character_use:
             continue
 
         qc_metrics = cast(dict[str, object], entry["qc_metrics"])

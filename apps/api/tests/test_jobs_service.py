@@ -1,4 +1,5 @@
 from collections.abc import Callable, Generator
+from datetime import timedelta
 from threading import Event, Thread
 
 from fastapi.testclient import TestClient
@@ -15,8 +16,10 @@ from app.services.jobs import (
     complete_job,
     enqueue_job,
     get_job_by_public_id,
+    get_service_heartbeat_payload,
     get_system_actor_id,
     run_worker_once,
+    upsert_service_heartbeat,
 )
 from tests.db_test_utils import migrated_database
 
@@ -246,5 +249,36 @@ def test_job_history_events_cover_completed_and_failed_paths() -> None:
                 assert completed_events[-1].details["status"] == "completed"
                 assert failed_events[-1].details["status"] == "failed"
                 assert failed_events[-1].details["error_summary"] == "Fail path verification"
+        finally:
+            engine.dispose()
+
+
+def test_service_heartbeat_payload_marks_worker_ready_and_stale() -> None:
+    with migrated_database("service_heartbeat_payload") as database_url:
+        engine, session_factory = _session_factory(database_url)
+        try:
+            with session_factory() as session, session.begin():
+                missing_payload = get_service_heartbeat_payload(session, "worker")
+                assert missing_payload["status"] == "offline"
+
+                heartbeat = upsert_service_heartbeat(
+                    session,
+                    service_name="worker",
+                    detail="polling",
+                )
+                ready_payload = get_service_heartbeat_payload(session, "worker")
+                assert ready_payload["status"] == "ready"
+                assert ready_payload["seconds_since_heartbeat"] == 0
+                assert ready_payload["last_seen_at"] == heartbeat.last_seen_at
+
+                heartbeat.last_seen_at = heartbeat.last_seen_at - timedelta(seconds=30)
+                session.flush()
+
+                stale_payload = get_service_heartbeat_payload(session, "worker")
+                assert stale_payload["status"] == "stale"
+                seconds_since_heartbeat = stale_payload["seconds_since_heartbeat"]
+                assert isinstance(seconds_since_heartbeat, int)
+                assert seconds_since_heartbeat >= 30
+                assert "stale" in str(stale_payload["detail"])
         finally:
             engine.dispose()

@@ -3,6 +3,7 @@ import React from "react";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { SectionCard } from "../../../components/ui/SectionCard";
 import { StudioFrame } from "../../../components/ui/StudioFrame";
+import { getApiBase } from "../../../lib/runtimeApiBase";
 import { RuntimeSettingsPanel } from "./RuntimeSettingsPanel";
 
 type SystemStatusPayload = {
@@ -55,11 +56,9 @@ type SystemStatusPayload = {
   };
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 async function getSystemStatus(): Promise<SystemStatusPayload> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/system/status`, { cache: "no-store" });
+  const response = await fetch(`${getApiBase()}/api/v1/system/status`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error("Unable to load the runtime settings.");
   }

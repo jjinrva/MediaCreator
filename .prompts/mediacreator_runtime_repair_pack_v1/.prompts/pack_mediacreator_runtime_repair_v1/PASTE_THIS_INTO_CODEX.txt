@@ -1,0 +1,8 @@
+Read and follow exactly:
+
+1. `.prompts/pack_mediacreator_runtime_repair_v1/MASTER_FIX_RUN.md`
+2. Do not skip phases.
+3. Do not read or work on any later phase until the current phase has been completed and verified.
+4. Use the shared experts in `/experts`.
+5. Update the phase report and verification report after every phase.
+6. If verification fails, repair the current phase and rerun verification before moving on.

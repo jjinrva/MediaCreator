@@ -5,7 +5,14 @@ import os
 from pathlib import Path
 from typing import cast
 
+from sqlalchemy.orm import Session
+
 from app.services.generation_provider import get_generation_capability
+from app.services.jobs import (
+    DEFAULT_WORKER_HEARTBEAT_STALE_AFTER_SECONDS,
+    WORKER_SERVICE_NAME,
+    get_service_heartbeat_payload,
+)
 from app.services.lora_training import get_lora_training_capability
 from app.services.storage_service import resolve_storage_layout
 from app.services.video_render import DEFAULT_BLENDER_BIN
@@ -61,7 +68,14 @@ def get_storage_paths_payload() -> dict[str, str]:
     }
 
 
-def get_system_settings_payload() -> dict[str, object]:
+def _worker_heartbeat_stale_after_seconds() -> int:
+    configured = os.getenv("MEDIACREATOR_WORKER_HEARTBEAT_STALE_AFTER_SECONDS")
+    if configured is None:
+        return DEFAULT_WORKER_HEARTBEAT_STALE_AFTER_SECONDS
+    return int(configured)
+
+
+def get_system_settings_payload(session: Session) -> dict[str, object]:
     storage_layout = resolve_storage_layout()
     generation_capability = get_generation_capability()
     ai_toolkit = get_lora_training_capability()
@@ -75,6 +89,11 @@ def get_system_settings_payload() -> dict[str, object]:
         "generation": generation_capability,
         "blender": get_blender_capability(),
         "ai_toolkit": ai_toolkit,
+        "worker": get_service_heartbeat_payload(
+            session,
+            WORKER_SERVICE_NAME,
+            stale_after_seconds=_worker_heartbeat_stale_after_seconds(),
+        ),
         "storage_paths": get_storage_paths_payload(),
     }
 

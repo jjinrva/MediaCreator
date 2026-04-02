@@ -12,11 +12,20 @@ make dev
 
 Expected local endpoints:
 
-- web: `http://10.0.0.102:3000`
-- API: `http://10.0.0.102:8010`
-- health: `http://10.0.0.102:8010/health`
+- web: `http://<current-lan-host>:3000`
+- API: `http://127.0.0.1:8010`
+- health: `http://127.0.0.1:8010/health`
 
-The services bind on `0.0.0.0` by default. Use the `10.0.0.102` URLs in the browser and operator checks.
+The services bind on `0.0.0.0` by default. Use the machine's current LAN hostname or IP in the browser, and use `127.0.0.1` for on-box API health checks.
+
+## Actual operator flow
+
+- photoset upload and QC are immediate; accepted and rejected counts come back in the upload response
+- base character creation is immediate once at least one accepted entry exists
+- preview export, high-detail reconstruction, LoRA training, and controlled video render are queued jobs
+- each queued route returns a `job_public_id`; the web UI follows that through `/api/v1/jobs/{job_public_id}`
+- if `/api/v1/system/status` reports the `worker` heartbeat as `offline` or `stale`, queued jobs will not progress until the worker is started again
+- when troubleshooting the character detail page, check `/studio/diagnostics` or `GET /api/v1/system/status` before assuming the queue is broken
 
 ## Required runtime directories
 

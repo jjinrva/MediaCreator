@@ -1,7 +1,10 @@
 const { defineConfig } = require("@playwright/test");
 
-const WEB_BASE_URL = "http://10.0.0.102:3000";
-const API_BASE_URL = "http://10.0.0.102:8010";
+const PLAYWRIGHT_HOST = process.env.MEDIACREATOR_PLAYWRIGHT_HOST ?? "localhost";
+const WEB_BASE_URL =
+  process.env.MEDIACREATOR_PLAYWRIGHT_WEB_BASE_URL ?? `http://${PLAYWRIGHT_HOST}:3000`;
+const API_BASE_URL =
+  process.env.MEDIACREATOR_PLAYWRIGHT_API_BASE_URL ?? `http://${PLAYWRIGHT_HOST}:8010`;
 
 module.exports = defineConfig({
   testDir: "./tests/e2e",
@@ -26,7 +29,9 @@ module.exports = defineConfig({
       reuseExistingServer: false
     },
     {
-      command: "../../infra/bin/pnpm dev --hostname 0.0.0.0 --port 3000",
+      command:
+        `MEDIACREATOR_ALLOWED_DEV_ORIGINS=${PLAYWRIGHT_HOST} ` +
+        "../../infra/bin/pnpm dev --hostname 0.0.0.0 --port 3000",
       cwd: __dirname,
       url: WEB_BASE_URL,
       timeout: 120000,

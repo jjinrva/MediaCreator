@@ -13,6 +13,7 @@ from app.main import app
 from app.models.history_event import HistoryEvent
 from app.models.job import Job
 from app.models.storage_object import StorageObject
+from app.services.jobs import run_worker_once
 from tests.db_test_utils import migrated_database
 
 
@@ -75,8 +76,8 @@ def test_blender_preview_export_route_generates_a_glb_and_job_metadata(
                             (
                                 "photos",
                                 (
-                                    "male_body_front.png",
-                                    _sample_image_bytes("male_body_front.png"),
+                                    "male_head_front.png",
+                                    _sample_image_bytes("male_head_front.png"),
                                     "image/png",
                                 ),
                             ),
@@ -102,11 +103,35 @@ def test_blender_preview_export_route_generates_a_glb_and_job_metadata(
                     export_response = client.post(
                         f"/api/v1/exports/characters/{character_public_id}/preview"
                     )
-                    assert export_response.status_code == 200
-                    payload = export_response.json()
+                    assert export_response.status_code == 202
+                    queued_payload = export_response.json()
+                    assert queued_payload["status"] == "queued"
+                    assert queued_payload["step_name"] == "queued"
+                    assert queued_payload["progress_percent"] == 0
+
+                    scaffold_response = client.get(
+                        f"/api/v1/exports/characters/{character_public_id}"
+                    )
+                    assert scaffold_response.status_code == 200
+                    scaffold_payload = scaffold_response.json()
+                    assert scaffold_payload["preview_glb"]["status"] == "not-ready"
+                    assert scaffold_payload["export_job"]["status"] == "queued"
+                    assert (
+                        scaffold_payload["export_job"]["job_public_id"]
+                        == queued_payload["job_public_id"]
+                    )
+
+                assert run_worker_once(session_factory) == "completed"
+
+                with TestClient(app) as client:
+                    payload = client.get(
+                        f"/api/v1/exports/characters/{character_public_id}"
+                    ).json()
                     assert payload["preview_glb"]["status"] == "available"
                     assert payload["preview_glb"]["url"] is not None
                     assert payload["export_job"]["status"] == "completed"
+                    assert payload["export_job"]["step_name"] == "completed"
+                    assert payload["export_job"]["progress_percent"] == 100
 
                     preview_response = client.get(
                         f"/api/v1/exports/characters/{character_public_id}/preview.glb"
@@ -138,6 +163,7 @@ def test_blender_preview_export_route_generates_a_glb_and_job_metadata(
                     assert Path(storage_object.storage_path).exists()
                     assert job is not None
                     assert job.status == "completed"
+                    assert job.step_name == "completed"
                     assert job.output_storage_object_id is not None
                     assert len(history_events) == 2
                     assert {event.event_type for event in history_events} == {

@@ -18,6 +18,7 @@ class PhotosetQcMetrics(BaseModel):
 
 
 class PhotosetEntryResponse(BaseModel):
+    accepted_for_character_use: bool
     public_id: uuid.UUID
     photo_asset_public_id: uuid.UUID
     original_filename: str
@@ -31,8 +32,10 @@ class PhotosetEntryResponse(BaseModel):
 
 
 class PhotosetDetailResponse(BaseModel):
+    accepted_entry_count: int
     public_id: uuid.UUID
     asset_type: str
     status: str
     entry_count: int
+    rejected_entry_count: int
     entries: list[PhotosetEntryResponse]

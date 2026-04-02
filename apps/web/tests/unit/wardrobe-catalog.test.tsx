@@ -63,7 +63,7 @@ describe("Phase 22 wardrobe catalog", () => {
 
     await waitFor(() => {
       expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-        "http://10.0.0.102:8010/api/v1/wardrobe/from-photo"
+        "http://localhost:8010/api/v1/wardrobe/from-photo"
       );
       expect((fetchMock.mock.calls[0]?.[1] as { method: string }).method).toBe("POST");
       expect(refresh).toHaveBeenCalled();
@@ -103,7 +103,7 @@ describe("Phase 22 wardrobe catalog", () => {
 
     await waitFor(() => {
       expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-        "http://10.0.0.102:8010/api/v1/wardrobe/from-prompt"
+        "http://localhost:8010/api/v1/wardrobe/from-prompt"
       );
       const init = fetchMock.mock.calls[0]?.[1] as {
         body: string;

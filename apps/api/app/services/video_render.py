@@ -358,8 +358,11 @@ def _video_job_payload(job: Job | None) -> dict[str, object]:
     if job is None:
         return {
             "detail": "No controlled video render job has been queued yet.",
+            "job_public_id": None,
+            "progress_percent": None,
             "public_id": None,
             "status": "not-queued",
+            "step_name": None,
         }
 
     if job.status == "completed":
@@ -371,8 +374,11 @@ def _video_job_payload(job: Job | None) -> dict[str, object]:
 
     return {
         "detail": detail,
+        "job_public_id": job.public_id,
+        "progress_percent": job.progress_percent,
         "public_id": job.public_id,
         "status": job.status,
+        "step_name": job.step_name,
     }
 
 

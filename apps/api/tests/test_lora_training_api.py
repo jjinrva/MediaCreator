@@ -14,10 +14,12 @@ from app.db.session import get_db_session
 from app.main import app
 from app.models.models_registry import ModelRegistry
 from app.services.generation_provider import resolve_generation_lora_activation
+from app.services.jobs import run_worker_once
 from app.services.lora_training import (
     get_character_lora_training_payload,
     register_lora_model,
     resolve_active_lora_artifact,
+    update_lora_registry_status_for_job,
 )
 from tests.db_test_utils import migrated_database
 
@@ -76,8 +78,8 @@ def _create_character_and_dataset(client: TestClient) -> str:
             (
                 "photos",
                 (
-                    "male_body_front.png",
-                    _sample_image_bytes("male_body_front.png"),
+                    "male_head_front.png",
+                    _sample_image_bytes("male_head_front.png"),
                     "image/png",
                 ),
             ),
@@ -246,6 +248,107 @@ def test_lora_registry_tracks_statuses_and_resolves_active_generation_model(
                     statuses = sorted(row.status for row in registry_rows)
                     assert statuses == ["archived", "current", "failed", "working"]
                     assert current_entry.status == "current"
+            finally:
+                app.dependency_overrides.clear()
+                engine.dispose()
+
+
+def test_lora_training_route_queues_job_and_requires_worker_cycle(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    with migrated_database("lora_training_queue") as database_url:
+        engine, session_factory = _session_factory(database_url)
+        app.dependency_overrides[get_db_session] = _override_db_session(session_factory)
+
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            _configure_storage(monkeypatch, temp_path)
+            fake_ai_toolkit = temp_path / "bin" / "ai-toolkit"
+            fake_ai_toolkit.parent.mkdir(parents=True, exist_ok=True)
+            fake_ai_toolkit.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            fake_ai_toolkit.chmod(0o755)
+            monkeypatch.setattr(
+                "app.services.lora_training._resolve_ai_toolkit_bin",
+                lambda *_: fake_ai_toolkit,
+            )
+
+            def _fake_execute_lora_training_job(
+                session: Session,
+                job: object,
+                payload: object,
+            ) -> uuid.UUID:
+                from app.models.job import Job
+                from app.services.jobs import LoraTrainingJobPayload
+
+                validated_job = cast(Job, job)
+                validated_payload = cast(LoraTrainingJobPayload, payload)
+                output_path = Path(validated_payload.output_lora_path)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"trained-lora")
+
+                update_lora_registry_status_for_job(
+                    session,
+                    validated_payload.character_public_id,
+                    job_public_id=validated_job.public_id,
+                    status="archived",
+                )
+                registry_entry = register_lora_model(
+                    session,
+                    validated_payload.character_public_id,
+                    details={
+                        "job_public_id": str(validated_job.public_id),
+                        "job_status": "completed",
+                    },
+                    model_name=output_path.name,
+                    prompt_handle=validated_payload.prompt_handle,
+                    status="current",
+                    storage_path=output_path,
+                    toolkit_name="ai-toolkit",
+                )
+                assert registry_entry.storage_object_id is not None
+                return registry_entry.storage_object_id
+
+            monkeypatch.setattr(
+                "app.services.lora_training.execute_lora_training_job",
+                _fake_execute_lora_training_job,
+            )
+
+            try:
+                with TestClient(app) as client:
+                    character_public_id = _create_character_and_dataset(client)
+
+                    training_response = client.post(
+                        f"/api/v1/lora/characters/{character_public_id}"
+                    )
+                    assert training_response.status_code == 202
+                    queued_payload = training_response.json()
+                    assert queued_payload["status"] == "queued"
+                    assert queued_payload["step_name"] == "queued"
+                    assert queued_payload["progress_percent"] == 0
+
+                    queued_state = client.get(f"/api/v1/lora/characters/{character_public_id}")
+                    assert queued_state.status_code == 200
+                    queued_screen = queued_state.json()
+                    assert queued_screen["training_job"]["status"] == "queued"
+                    assert (
+                        queued_screen["training_job"]["job_public_id"]
+                        == queued_payload["job_public_id"]
+                    )
+                    assert queued_screen["active_model"] is None
+                    assert queued_screen["registry"][0]["status"] == "working"
+
+                assert run_worker_once(session_factory) == "completed"
+
+                with TestClient(app) as client:
+                    completed_state = client.get(f"/api/v1/lora/characters/{character_public_id}")
+                    assert completed_state.status_code == 200
+                    completed_screen = completed_state.json()
+                    assert completed_screen["training_job"]["status"] == "completed"
+                    assert completed_screen["training_job"]["step_name"] == "completed"
+                    assert completed_screen["training_job"]["progress_percent"] == 100
+                    assert completed_screen["active_model"] is not None
+                    statuses = sorted(entry["status"] for entry in completed_screen["registry"])
+                    assert statuses == ["archived", "current"]
             finally:
                 app.dependency_overrides.clear()
                 engine.dispose()

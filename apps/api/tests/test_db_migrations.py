@@ -24,7 +24,14 @@ def test_initial_migration_runs_up_and_down() -> None:
 
         engine = create_engine(database_url)
         inspector = inspect(engine)
-        assert {"actors", "assets", "history_events", "jobs", "storage_objects"}.issubset(
+        assert {
+            "actors",
+            "assets",
+            "history_events",
+            "jobs",
+            "service_heartbeats",
+            "storage_objects",
+        }.issubset(
             set(inspector.get_table_names())
         )
         actor_columns = {
@@ -32,6 +39,9 @@ def test_initial_migration_runs_up_and_down() -> None:
         }
         job_columns = {column["name"] for column in inspector.get_columns("jobs")}
         history_columns = {column["name"] for column in inspector.get_columns("history_events")}
+        heartbeat_columns = {
+            column["name"] for column in inspector.get_columns("service_heartbeats")
+        }
         assert actor_columns["id"].__class__.__name__ == "UUID"
         assert actor_columns["public_id"].__class__.__name__ == "UUID"
         assert {
@@ -42,6 +52,7 @@ def test_initial_migration_runs_up_and_down() -> None:
             "output_storage_object_id",
         }.issubset(job_columns)
         assert "job_id" in history_columns
+        assert {"service_name", "detail", "last_seen_at"}.issubset(heartbeat_columns)
 
         with engine.connect() as connection:
             actor_row = connection.execute(
@@ -60,6 +71,7 @@ def test_initial_migration_runs_up_and_down() -> None:
             "assets",
             "history_events",
             "jobs",
+            "service_heartbeats",
             "storage_objects",
         }.intersection(inspector.get_table_names())
         engine.dispose()

@@ -2,8 +2,10 @@ import fs from "node:fs";
 
 import { expect, test } from "@playwright/test";
 
-const SAMPLE_PHOTO = "/opt/MediaCreator/docs/capture_guides/assets/male_body_front.png";
-const API_BASE_URL = "http://10.0.0.102:8010";
+const SAMPLE_PHOTO = "/opt/MediaCreator/docs/capture_guides/assets/male_head_front.png";
+const PLAYWRIGHT_HOST = process.env.MEDIACREATOR_PLAYWRIGHT_HOST ?? "localhost";
+const API_BASE_URL =
+  process.env.MEDIACREATOR_PLAYWRIGHT_API_BASE_URL ?? `http://${PLAYWRIGHT_HOST}:8010`;
 
 test("motion library assigns a local clip to a character and survives reload", async ({
   page,
@@ -15,7 +17,7 @@ test("motion library assigns a local clip to a character and survives reload", a
       photos: {
         buffer: fs.readFileSync(SAMPLE_PHOTO),
         mimeType: "image/png",
-        name: "male_body_front.png"
+        name: "male_head_front.png"
       }
     }
   });

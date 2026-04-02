@@ -12,12 +12,18 @@ from app.services.body_parameters import get_character_body_parameter_payload
 from app.services.characters import get_character_payload
 from app.services.exports import get_character_export_payload
 from app.services.generation_provider import get_generation_capability
+from app.services.jobs import (
+    DEFAULT_WORKER_HEARTBEAT_STALE_AFTER_SECONDS,
+    WORKER_SERVICE_NAME,
+    get_service_heartbeat_payload,
+)
 from app.services.lora_training import get_character_lora_training_payload
 from app.services.pose_state import get_character_pose_state_payload
 from app.services.system_runtime import read_diagnostics_report_summary
 
-API_PUBLIC_HOST = os.environ.get("MEDIACREATOR_API_PUBLIC_HOST", "10.0.0.102")
-API_PORT = os.environ.get("MEDIACREATOR_API_PORT", "8010")
+INTERNAL_API_BASE_URL = os.environ.get(
+    "MEDIACREATOR_INTERNAL_API_BASE_URL", "http://127.0.0.1:8010"
+)
 
 
 def _asset_query() -> Select[tuple[Asset]]:
@@ -51,6 +57,20 @@ def _check_payload(
 def get_live_diagnostics_payload(session: Session) -> dict[str, object]:
     character_public_id = _latest_character_public_id(session)
     checks: list[dict[str, str]] = []
+    worker_heartbeat = get_service_heartbeat_payload(
+        session,
+        WORKER_SERVICE_NAME,
+        stale_after_seconds=DEFAULT_WORKER_HEARTBEAT_STALE_AFTER_SECONDS,
+    )
+
+    checks.append(
+        _check_payload(
+            check_id="worker_heartbeat",
+            detail=str(worker_heartbeat["detail"]),
+            label="Worker heartbeat",
+            status="pass" if worker_heartbeat["status"] == "ready" else "fail",
+        )
+    )
 
     if character_public_id is None:
         checks.extend(
@@ -153,7 +173,7 @@ def get_live_diagnostics_payload(session: Session) -> dict[str, object]:
         export_payload = get_character_export_payload(
             session,
             character_public_id,
-            api_base_url=f"http://{API_PUBLIC_HOST}:{API_PORT}",
+            api_base_url=INTERNAL_API_BASE_URL,
         )
         preview_status = "not-ready"
         export_available = False

@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import React from "react";
 
+import { getApiBase } from "../../lib/runtimeApiBase";
+
 type MotionAssignmentPanelProps = {
   characters: Array<{
     currentMotion:
@@ -34,8 +36,6 @@ type MotionAssignmentPanelProps = {
   }>;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 export function MotionAssignmentPanel({
   characters,
@@ -67,7 +67,7 @@ export function MotionAssignmentPanel({
       setIsSaving(true);
 
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/motion/characters/${selectedCharacterId}`,
+        `${getApiBase()}/api/v1/motion/characters/${selectedCharacterId}`,
         {
           method: "PUT",
           headers: { "content-type": "application/json" },

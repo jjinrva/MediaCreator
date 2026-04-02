@@ -12,6 +12,16 @@ vi.mock("next/navigation", () => ({
   })
 }));
 
+vi.mock("../../components/jobs/JobProgressCard", () => ({
+  JobProgressCard: ({
+    initialJob,
+    title
+  }: {
+    initialJob: { jobPublicId: string | null; status: string };
+    title: string;
+  }) => <div>{`${title}:${initialJob.status}:${initialJob.jobPublicId}`}</div>
+}));
+
 beforeEach(() => {
   refresh.mockReset();
 });
@@ -22,10 +32,22 @@ afterEach(() => {
 });
 
 describe("Phase 24 video render panel", () => {
-  it("posts a controlled video render request and keeps the current video playable", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      json: async () => ({ characters: [{}] }),
-      ok: true
+  it("queues a controlled video render request and keeps the current video playable", async () => {
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.endsWith("/render")) {
+        return {
+          json: async () => ({
+            detail: "Controlled video render queued. Follow the job until it reaches a terminal state.",
+            job_public_id: "job-video-1",
+            progress_percent: 0,
+            status: "queued",
+            step_name: "queued"
+          }),
+          ok: true
+        };
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -54,7 +76,7 @@ describe("Phase 24 video render panel", () => {
               publicId: "video-1",
               status: "available",
               storageObjectPublicId: "storage-1",
-              url: "http://10.0.0.102:8010/api/v1/video/assets/video-1.mp4",
+              url: "http://localhost:8010/api/v1/video/assets/video-1.mp4",
               width: 320
             },
             publicId: "character-1",
@@ -68,8 +90,11 @@ describe("Phase 24 video render panel", () => {
             ],
             renderJob: {
               detail: "Latest controlled video render job completed successfully.",
+              jobPublicId: "job-1",
+              progressPercent: 100,
               publicId: "job-1",
-              status: "completed"
+              status: "completed",
+              stepName: "completed"
             },
             status: "available"
           }
@@ -93,7 +118,7 @@ describe("Phase 24 video render panel", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://10.0.0.102:8010/api/v1/video/characters/character-1/render",
+        "http://localhost:8010/api/v1/video/characters/character-1/render",
         {
           body: JSON.stringify({
             duration_seconds: 1.4,
@@ -104,7 +129,8 @@ describe("Phase 24 video render panel", () => {
           method: "POST"
         }
       );
-      expect(refresh).toHaveBeenCalled();
+      expect(screen.getByText("Controlled video render job:queued:job-video-1")).toBeTruthy();
+      expect(refresh).not.toHaveBeenCalled();
     });
   });
 });

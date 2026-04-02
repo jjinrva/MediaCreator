@@ -70,16 +70,8 @@ def test_character_export_route_reports_truthful_not_ready_scaffold(
                             (
                                 "photos",
                                 (
-                                    "male_body_front.png",
-                                    _sample_image_bytes("male_body_front.png"),
-                                    "image/png",
-                                ),
-                            ),
-                            (
-                                "photos",
-                                (
-                                    "female_head_front.png",
-                                    _sample_image_bytes("female_head_front.png"),
+                                    "male_head_front.png",
+                                    _sample_image_bytes("male_head_front.png"),
                                     "image/png",
                                 ),
                             ),
@@ -105,6 +97,9 @@ def test_character_export_route_reports_truthful_not_ready_scaffold(
                     assert payload["final_glb"]["status"] == "not-ready"
                     assert payload["final_glb"]["url"] is None
                     assert payload["export_job"]["status"] == "not-queued"
+                    assert payload["export_job"]["job_public_id"] is None
+                    assert payload["export_job"]["step_name"] is None
+                    assert payload["export_job"]["progress_percent"] is None
 
                     preview_response = client.get(
                         f"/api/v1/exports/characters/{character_public_id}/preview.glb"

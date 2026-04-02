@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -55,6 +56,15 @@ class StoragePathsResponse(BaseModel):
     wardrobe_root: str
 
 
+class WorkerHeartbeatResponse(BaseModel):
+    service_name: str
+    status: str
+    detail: str
+    last_seen_at: datetime | None
+    seconds_since_heartbeat: int | None
+    stale_after_seconds: int
+
+
 class SystemStatusResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -66,4 +76,5 @@ class SystemStatusResponse(BaseModel):
     generation: GenerationCapabilityResponse
     blender: BlenderCapabilityResponse
     ai_toolkit: AiToolkitCapabilityResponse
+    worker: WorkerHeartbeatResponse
     storage_paths: StoragePathsResponse

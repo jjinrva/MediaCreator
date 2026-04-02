@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import React from "react";
 
+import { getApiBase } from "../../lib/runtimeApiBase";
 import { NumericSliderField } from "../ui/NumericSliderField";
 
 type FacialParameterCatalogEntry = {
@@ -24,8 +25,6 @@ type FaceParameterEditorProps = {
   initialValues: Record<string, number>;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 function formatValue(value: number, unit: string) {
   return `${value.toFixed(2)}${unit}`;
@@ -50,7 +49,7 @@ export function FaceParameterEditor({
   async function handleCommit(parameterKey: string, numericValue: number, label: string, unit: string) {
     try {
       setError(null);
-      const response = await fetch(`${API_BASE_URL}/api/v1/face/characters/${characterPublicId}`, {
+      const response = await fetch(`${getApiBase()}/api/v1/face/characters/${characterPublicId}`, {
         body: JSON.stringify({
           parameter_key: parameterKey,
           numeric_value: numericValue

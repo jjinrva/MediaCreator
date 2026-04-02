@@ -1,8 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import React from "react";
+
+import { JobProgressCard } from "../../../components/jobs/JobProgressCard";
+import type { JobProgressSummary } from "../../../lib/jobProgress";
+import { isInFlightJobStatus } from "../../../lib/jobProgress";
+import { getApiBase } from "../../../lib/runtimeApiBase";
 
 type VideoRenderPanelProps = {
   characters: Array<{
@@ -43,16 +47,17 @@ type VideoRenderPanelProps = {
     }>;
     renderJob: {
       detail: string;
+      jobPublicId: string | null;
+      progressPercent: number | null;
       publicId: string | null;
       status: string;
+      stepName: string | null;
     };
     status: string;
   }>;
   renderPolicy: string;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 function formatBytes(byteCount: number | null) {
   if (byteCount === null) {
@@ -65,7 +70,6 @@ function formatBytes(byteCount: number | null) {
 }
 
 export function VideoRenderPanel({ characters, renderPolicy }: VideoRenderPanelProps) {
-  const router = useRouter();
   const [selectedCharacterId, setSelectedCharacterId] = React.useState(characters[0]?.publicId ?? "");
   const [width, setWidth] = React.useState(480);
   const [height, setHeight] = React.useState(480);
@@ -73,8 +77,25 @@ export function VideoRenderPanel({ characters, renderPolicy }: VideoRenderPanelP
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [actionSummary, setActionSummary] = React.useState<string | null>(null);
   const [isRendering, setIsRendering] = React.useState(false);
+  const [queuedJobs, setQueuedJobs] = React.useState<Record<string, JobProgressSummary>>({});
 
   const selectedCharacter = characters.find((character) => character.publicId === selectedCharacterId);
+  const selectedCharacterJob =
+    selectedCharacter === undefined
+      ? null
+      : queuedJobs[selectedCharacter.publicId] ?? {
+          detail: selectedCharacter.renderJob.detail,
+          jobPublicId: selectedCharacter.renderJob.jobPublicId,
+          progressPercent: selectedCharacter.renderJob.progressPercent,
+          status: selectedCharacter.renderJob.status,
+          stepName: selectedCharacter.renderJob.stepName
+        };
+  const hasTrackedJob =
+    selectedCharacterJob !== null &&
+    selectedCharacterJob.jobPublicId !== null &&
+    selectedCharacterJob.status !== "not-queued";
+  const isJobInFlight =
+    selectedCharacterJob !== null && isInFlightJobStatus(selectedCharacterJob.status);
 
   React.useEffect(() => {
     if (!selectedCharacter) {
@@ -105,7 +126,7 @@ export function VideoRenderPanel({ characters, renderPolicy }: VideoRenderPanelP
       setActionSummary(null);
 
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/video/characters/${selectedCharacter.publicId}/render`,
+        `${getApiBase()}/api/v1/video/characters/${selectedCharacter.publicId}/render`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -121,8 +142,24 @@ export function VideoRenderPanel({ characters, renderPolicy }: VideoRenderPanelP
         throw new Error(payload.detail ?? "Video render failed.");
       }
 
-      setActionSummary("Controlled video render completed.");
-      router.refresh();
+      const queuedRenderJob = payload as {
+        detail: string;
+        job_public_id: string;
+        progress_percent: number;
+        status: string;
+        step_name: string | null;
+      };
+      setQueuedJobs((currentJobs) => ({
+        ...currentJobs,
+        [selectedCharacter.publicId]: {
+          detail: queuedRenderJob.detail,
+          jobPublicId: queuedRenderJob.job_public_id,
+          progressPercent: queuedRenderJob.progress_percent,
+          status: queuedRenderJob.status,
+          stepName: queuedRenderJob.step_name
+        }
+      }));
+      setActionSummary(queuedRenderJob.detail);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Video render failed.");
     } finally {
@@ -192,9 +229,18 @@ export function VideoRenderPanel({ characters, renderPolicy }: VideoRenderPanelP
             <button
               type="submit"
               className="previewActionButton"
-              disabled={isRendering || !selectedCharacter || !selectedCharacter.currentMotion}
+              disabled={
+                isRendering ||
+                isJobInFlight ||
+                !selectedCharacter ||
+                !selectedCharacter.currentMotion
+              }
             >
-              {isRendering ? "Rendering video..." : "Render video"}
+              {isRendering
+                ? "Queueing video render..."
+                : isJobInFlight
+                  ? "Video render in progress..."
+                  : "Render video"}
             </button>
           </div>
         </form>
@@ -204,8 +250,8 @@ export function VideoRenderPanel({ characters, renderPolicy }: VideoRenderPanelP
             <strong>Selected character</strong>
             <span>{selectedCharacter?.label ?? "No character selected"}</span>
             <span>{selectedCharacter?.currentMotion ? `Current motion: ${selectedCharacter.currentMotion.motionName}` : "Current motion: none"}</span>
-            <span>{`Render job: ${selectedCharacter?.renderJob.status ?? "not-queued"}`}</span>
-            <span>{selectedCharacter?.renderJob.detail ?? "No render job has been queued yet."}</span>
+            <span>{`Render job: ${selectedCharacterJob?.status ?? "not-queued"}`}</span>
+            <span>{selectedCharacterJob?.detail ?? "No render job has been queued yet."}</span>
             {selectedCharacter?.latestVideo ? (
               <>
                 <span>{`Latest video: ${selectedCharacter.latestVideo.motionName}`}</span>
@@ -235,6 +281,9 @@ export function VideoRenderPanel({ characters, renderPolicy }: VideoRenderPanelP
             ) : (
               <span>No rendered video is available yet.</span>
             )}
+            {selectedCharacterJob && hasTrackedJob ? (
+              <JobProgressCard initialJob={selectedCharacterJob} title="Controlled video render job" />
+            ) : null}
           </div>
         </article>
       </div>

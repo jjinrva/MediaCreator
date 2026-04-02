@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.session import get_db_session
 from app.main import app
+from app.services.jobs import upsert_service_heartbeat
 from tests.db_test_utils import migrated_database
 
 
@@ -112,8 +113,8 @@ def _create_character(client: TestClient) -> str:
             (
                 "photos",
                 (
-                    "male_body_front.png",
-                    _sample_image_bytes("male_body_front.png"),
+                    "male_head_front.png",
+                    _sample_image_bytes("male_head_front.png"),
                     "image/png",
                 ),
             )
@@ -142,6 +143,12 @@ def test_system_status_and_diagnostics_routes_report_truthful_runtime_state(
             try:
                 with TestClient(app) as client:
                     _create_character(client)
+                    with session_factory() as session, session.begin():
+                        upsert_service_heartbeat(
+                            session,
+                            service_name="worker",
+                            detail="polling",
+                        )
 
                     status_response = client.get("/api/v1/system/status")
                     assert status_response.status_code == 200
@@ -153,6 +160,8 @@ def test_system_status_and_diagnostics_routes_report_truthful_runtime_state(
                     assert status_payload["blender"]["status"] == "ready"
                     assert status_payload["ai_toolkit"]["status"] == "unavailable"
                     assert status_payload["generation"]["status"] == "unavailable"
+                    assert status_payload["worker"]["service_name"] == "worker"
+                    assert status_payload["worker"]["status"] == "ready"
                     assert status_payload["storage_paths"]["nas_root"] == str(nas_root)
                     assert status_payload["storage_paths"]["checkpoints_root"] == str(
                         nas_root / "models" / "checkpoints"
@@ -168,6 +177,7 @@ def test_system_status_and_diagnostics_routes_report_truthful_runtime_state(
                     assert checks["ingest_pipeline"]["status"] == "pass"
                     assert checks["body_edit_persistence"]["status"] == "pass"
                     assert checks["pose_persistence"]["status"] == "pass"
+                    assert checks["worker_heartbeat"]["status"] == "pass"
                     assert checks["glb_preview"]["status"] == "fail"
                     assert checks["export_availability"]["status"] == "fail"
                     assert checks["lora_training_capability"]["status"] == "fail"

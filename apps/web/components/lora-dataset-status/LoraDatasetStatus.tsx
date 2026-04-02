@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import React from "react";
 
+import { getApiBase } from "../../lib/runtimeApiBase";
+
 type LoraDatasetStatusProps = {
   characterPublicId: string;
   detail: string;
@@ -12,8 +14,6 @@ type LoraDatasetStatusProps = {
   visibleTags: string[];
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 export function LoraDatasetStatus({
   characterPublicId,
@@ -35,7 +35,7 @@ export function LoraDatasetStatus({
       setIsBuilding(true);
 
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/lora-datasets/characters/${characterPublicId}`,
+        `${getApiBase()}/api/v1/lora-datasets/characters/${characterPublicId}`,
         { method: "POST" }
       );
       if (!response.ok) {

@@ -74,7 +74,7 @@ describe("Phase 23 motion assignment panel", () => {
 
     await waitFor(() => {
       expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-        "http://10.0.0.102:8010/api/v1/motion/characters/character-1"
+        "http://localhost:8010/api/v1/motion/characters/character-1"
       );
       expect((fetchMock.mock.calls[0]?.[1] as { method: string }).method).toBe("PUT");
       expect(refresh).toHaveBeenCalled();

@@ -1,0 +1,25 @@
+# Headless Network and Origin Expert
+
+- expert_id: headless-network-origin
+- specialty: LAN-safe host binding, browser origin handling, CORS, local headless deployment
+- scope:
+  - 0.0.0.0 binding
+  - browser/API origin derivation
+  - removal of fixed-machine IP assumptions
+  - dev/test host configuration cleanup
+- constraints:
+  - keep the current Next.js + FastAPI architecture
+  - do not add a reverse proxy in this pack
+  - do not hardcode a single LAN IP anywhere in runtime code
+- decision_rules:
+  - keep server bind hosts on `0.0.0.0`
+  - use a server-side internal API base default of `http://127.0.0.1:8010`
+  - use a browser-side derived API base from `window.location.hostname` when no public API base env var is set
+  - replace single-origin CORS with explicit env origins plus LAN-safe regex
+- evidence_rules:
+  - verify no runtime hardcoded `10.0.0.102` remains
+  - verify the app works when opened through a non-10.0.0.102 LAN address
+- when_to_use:
+  - any work touching host binding, API base URLs, CORS, README runtime examples, or Playwright base URLs
+- when_not_to_use:
+  - database-only changes with no networking impact

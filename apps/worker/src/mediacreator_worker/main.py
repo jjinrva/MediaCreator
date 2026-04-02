@@ -4,7 +4,7 @@ import signal
 from threading import Event
 
 from app.db.session import get_session_factory
-from app.services.jobs import run_worker_once
+from app.services.jobs import WORKER_SERVICE_NAME, run_worker_once, upsert_service_heartbeat
 from pydantic import BaseModel
 
 
@@ -42,6 +42,13 @@ def main() -> int:
     logger.info("Worker polling loop is active.")
 
     while not shutdown_requested.is_set():
+        with session_factory() as session:
+            with session.begin():
+                upsert_service_heartbeat(
+                    session,
+                    service_name=WORKER_SERVICE_NAME,
+                    detail="polling",
+                )
         result = run_worker_once(session_factory)
         if result != "idle":
             logger.info("Worker cycle result: %s", result)

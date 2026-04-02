@@ -5,6 +5,8 @@
 import { useRouter } from "next/navigation";
 import React from "react";
 
+import { getApiBase } from "../../lib/runtimeApiBase";
+
 type WardrobeCatalogProps = {
   generationCapability: {
     detail: string;
@@ -30,8 +32,6 @@ type WardrobeCatalogProps = {
   }>;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 function defaultFormState() {
   return {
@@ -82,7 +82,7 @@ export function WardrobeCatalog({ generationCapability, items }: WardrobeCatalog
       formData.append("material", photoForm.material);
       formData.append("base_color", photoForm.baseColor);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/wardrobe/from-photo`, {
+      const response = await fetch(`${getApiBase()}/api/v1/wardrobe/from-photo`, {
         method: "POST",
         body: formData
       });
@@ -110,7 +110,7 @@ export function WardrobeCatalog({ generationCapability, items }: WardrobeCatalog
       setActionSummary(null);
       setIsSubmittingPrompt(true);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/wardrobe/from-prompt`, {
+      const response = await fetch(`${getApiBase()}/api/v1/wardrobe/from-prompt`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

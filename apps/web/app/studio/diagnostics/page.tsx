@@ -3,6 +3,7 @@ import React from "react";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { SectionCard } from "../../../components/ui/SectionCard";
 import { StudioFrame } from "../../../components/ui/StudioFrame";
+import { getApiBase } from "../../../lib/runtimeApiBase";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 
 type DiagnosticsPayload = {
@@ -20,11 +21,9 @@ type DiagnosticsPayload = {
   } | null;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 async function getDiagnostics(): Promise<DiagnosticsPayload> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/system/diagnostics`, {
+  const response = await fetch(`${getApiBase()}/api/v1/system/diagnostics`, {
     cache: "no-store"
   });
   if (!response.ok) {

@@ -1,6 +1,6 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GlbPreview } from "../../components/glb-preview/GlbPreview";
 
@@ -12,20 +12,42 @@ vi.mock("next/navigation", () => ({
   })
 }));
 
+vi.mock("../../components/jobs/JobProgressCard", () => ({
+  JobProgressCard: ({
+    initialJob,
+    title
+  }: {
+    initialJob: { jobPublicId: string | null; status: string };
+    title: string;
+  }) => <div>{`${title}:${initialJob.status}:${initialJob.jobPublicId}`}</div>
+}));
+
+beforeEach(() => {
+  refresh.mockReset();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
 describe("Phase 17 GLB preview controls", () => {
-  it("requests a Blender preview export and refreshes the route", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      json: async () => ({
-        export_job: {
-          detail: "Latest Blender preview export job completed successfully.",
-          status: "completed"
-        },
-        preview_glb: {
-          detail: "Preview GLB exported from the Blender Rigify runtime is available.",
-          status: "available"
-        }
-      }),
-      ok: true
+  it("queues a Blender preview export and renders live job state", async () => {
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.endsWith("/preview")) {
+        return {
+          json: async () => ({
+            detail: "Preview export queued. Follow the job until it reaches a terminal state.",
+            job_public_id: "job-preview-1",
+            progress_percent: 0,
+            status: "queued",
+            step_name: "queued"
+          }),
+          ok: true
+        };
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -34,6 +56,11 @@ describe("Phase 17 GLB preview controls", () => {
         alt="Phase 17 preview"
         characterPublicId="phase-17-character"
         detail="No GLB preview is available yet."
+        jobDetail="No Blender export job has been queued yet."
+        jobProgressPercent={null}
+        jobPublicId={null}
+        jobStatus="not-queued"
+        jobStepName={null}
         src={null}
         status="not-ready"
         textureFidelity="untextured"
@@ -44,11 +71,12 @@ describe("Phase 17 GLB preview controls", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://10.0.0.102:8010/api/v1/exports/characters/phase-17-character/preview",
+        "http://localhost:8010/api/v1/exports/characters/phase-17-character/preview",
         { method: "POST" }
       );
       expect(screen.getByText("Texture fidelity: untextured")).toBeTruthy();
-      expect(refresh).toHaveBeenCalled();
+      expect(screen.getByText("Preview generation job:queued:job-preview-1")).toBeTruthy();
+      expect(refresh).not.toHaveBeenCalled();
     });
   });
 });

@@ -3,6 +3,7 @@ import React from "react";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { SectionCard } from "../../../components/ui/SectionCard";
 import { StudioFrame } from "../../../components/ui/StudioFrame";
+import { getApiBase } from "../../../lib/runtimeApiBase";
 import { VideoRenderPanel } from "./VideoRenderPanel";
 
 type VideoScreenPayload = {
@@ -40,19 +41,20 @@ type VideoScreenPayload = {
     }>;
     render_job: {
       detail: string;
+      job_public_id: string | null;
+      progress_percent: number | null;
       public_id: string | null;
       status: string;
+      step_name: string | null;
     };
     status: string;
   }>;
   render_policy: string;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 async function getVideoScreen(): Promise<VideoScreenPayload> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/video`, { cache: "no-store" });
+  const response = await fetch(`${getApiBase()}/api/v1/video`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error("Unable to load the controlled video route.");
   }
@@ -120,8 +122,11 @@ export default async function VideoPage() {
             })),
             renderJob: {
               detail: character.render_job.detail,
+              jobPublicId: character.render_job.job_public_id,
+              progressPercent: character.render_job.progress_percent,
               publicId: character.render_job.public_id,
-              status: character.render_job.status
+              status: character.render_job.status,
+              stepName: character.render_job.step_name
             },
             status: character.status
           }))}

@@ -2,6 +2,8 @@ import uuid
 
 from pydantic import BaseModel
 
+from app.schemas.jobs import JobSummaryResponse
+
 
 class LoraTrainingCapabilityResponse(BaseModel):
     ai_toolkit_bin: str | None
@@ -9,11 +11,6 @@ class LoraTrainingCapabilityResponse(BaseModel):
     loras_root: str
     missing_requirements: list[str]
     status: str
-
-
-class LoraTrainingJobResponse(BaseModel):
-    status: str
-    detail: str
 
 
 class LoraRegistryEntryResponse(BaseModel):
@@ -36,6 +33,6 @@ class ActiveLoraArtifactResponse(BaseModel):
 class CharacterLoraTrainingResponse(BaseModel):
     character_public_id: uuid.UUID
     capability: LoraTrainingCapabilityResponse
-    training_job: LoraTrainingJobResponse
+    training_job: JobSummaryResponse
     active_model: ActiveLoraArtifactResponse | None
     registry: list[LoraRegistryEntryResponse]

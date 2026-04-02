@@ -1,12 +1,13 @@
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
 from app.schemas.exports import CharacterExportScaffoldResponse
+from app.schemas.jobs import QueuedJobResponse
 from app.services.blender_runtime import queue_character_preview_export
 from app.services.exports import (
     get_character_detail_prep_storage_object,
@@ -14,7 +15,6 @@ from app.services.exports import (
     get_character_final_glb_storage_object,
     get_character_preview_glb_storage_object,
 )
-from app.services.jobs import run_worker_once
 from app.services.reconstruction import queue_character_reconstruction
 from app.services.texture_pipeline import (
     get_character_base_texture_storage_object,
@@ -42,75 +42,53 @@ def get_character_exports(
 
 @router.post(
     "/characters/{character_public_id}/preview",
-    response_model=CharacterExportScaffoldResponse,
+    response_model=QueuedJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 def generate_character_preview_glb(
     character_public_id: uuid.UUID,
-    request: Request,
     db_session: Session = Depends(get_db_session),
-) -> CharacterExportScaffoldResponse:
+) -> QueuedJobResponse:
     try:
         with db_session.begin():
-            queue_character_preview_export(db_session, character_public_id)
+            job = queue_character_preview_export(db_session, character_public_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    worker_session_factory = sessionmaker(
-        bind=db_session.get_bind(),
-        autoflush=False,
-        expire_on_commit=False,
+    return QueuedJobResponse(
+        job_public_id=job.public_id,
+        status=job.status,
+        step_name=job.step_name,
+        progress_percent=job.progress_percent,
+        detail="Preview export queued. Follow the job until it reaches a terminal state.",
     )
-    worker_result = run_worker_once(worker_session_factory)
-    if worker_result not in {"completed", "failed"}:
-        raise HTTPException(status_code=500, detail="Unable to run the Blender preview export job.")
-
-    db_session.expire_all()
-    payload = get_character_export_payload(
-        db_session,
-        character_public_id,
-        api_base_url=str(request.base_url).rstrip("/"),
-    )
-    if payload is None:
-        raise HTTPException(status_code=404, detail="Character not found.")
-    return CharacterExportScaffoldResponse.model_validate(payload)
 
 
 @router.post(
     "/characters/{character_public_id}/reconstruction",
-    response_model=CharacterExportScaffoldResponse,
+    response_model=QueuedJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 def run_character_reconstruction(
     character_public_id: uuid.UUID,
-    request: Request,
     db_session: Session = Depends(get_db_session),
-) -> CharacterExportScaffoldResponse:
+) -> QueuedJobResponse:
     try:
         with db_session.begin():
-            queue_character_reconstruction(db_session, character_public_id)
+            job = queue_character_reconstruction(db_session, character_public_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    worker_session_factory = sessionmaker(
-        bind=db_session.get_bind(),
-        autoflush=False,
-        expire_on_commit=False,
+    return QueuedJobResponse(
+        job_public_id=job.public_id,
+        status=job.status,
+        step_name=job.step_name,
+        progress_percent=job.progress_percent,
+        detail=(
+            "High-detail reconstruction queued. Follow the job until it reaches a terminal "
+            "state."
+        ),
     )
-    worker_result = run_worker_once(worker_session_factory)
-    if worker_result not in {"completed", "failed"}:
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to run the high-detail reconstruction job.",
-        )
-
-    db_session.expire_all()
-    payload = get_character_export_payload(
-        db_session,
-        character_public_id,
-        api_base_url=str(request.base_url).rstrip("/"),
-    )
-    if payload is None:
-        raise HTTPException(status_code=404, detail="Character not found.")
-    return CharacterExportScaffoldResponse.model_validate(payload)
 
 
 @router.get("/characters/{character_public_id}/preview.glb")

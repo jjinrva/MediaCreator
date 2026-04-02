@@ -33,6 +33,7 @@ POSE_LANDMARKER_URL = (
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
     "pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
 )
+ACCEPTED_QC_STATUSES = {"pass", "warn"}
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,10 @@ class PhotoStorageRoots:
     prepared_root: Path
     root_class: str
     uploaded_root: Path
+
+
+def is_qc_status_accepted_for_character_use(qc_status: str) -> bool:
+    return qc_status in ACCEPTED_QC_STATUSES
 
 
 def _asset_query() -> Select[tuple[Asset]]:
@@ -489,6 +494,7 @@ def serialize_photoset(
     ).scalars().all()
 
     serialized_entries: list[dict[str, object]] = []
+    accepted_entry_count = 0
 
     for entry in entries:
         photo_asset = _photo_asset_by_id(session, entry.photo_asset_id)
@@ -497,9 +503,13 @@ def serialize_photoset(
             session, entry.normalized_storage_object_id
         )
         thumbnail_storage_object = _storage_object_by_id(session, entry.thumbnail_storage_object_id)
+        accepted_for_character_use = is_qc_status_accepted_for_character_use(entry.qc_status)
+        if accepted_for_character_use:
+            accepted_entry_count += 1
 
         serialized_entries.append(
             {
+                "accepted_for_character_use": accepted_for_character_use,
                 "public_id": entry.public_id,
                 "photo_asset_public_id": photo_asset.public_id,
                 "original_filename": entry.original_filename,
@@ -533,10 +543,12 @@ def serialize_photoset(
         )
 
     return {
+        "accepted_entry_count": accepted_entry_count,
         "asset_type": photoset_asset.asset_type,
         "entry_count": len(serialized_entries),
         "entries": serialized_entries,
         "public_id": photoset_asset.public_id,
+        "rejected_entry_count": len(serialized_entries) - accepted_entry_count,
         "status": photoset_asset.status,
     }
 

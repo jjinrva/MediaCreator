@@ -77,13 +77,15 @@ describe("Phase 11 character ingest", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
+          accepted_entry_count: 1,
           entry_count: 1,
           entries: [
             {
+              accepted_for_character_use: true,
               artifact_urls: {
-                normalized: "http://10.0.0.102:8010/api/v1/photosets/phase-11/normalized",
-                original: "http://10.0.0.102:8010/api/v1/photosets/phase-11/original",
-                thumbnail: "http://10.0.0.102:8010/api/v1/photosets/phase-11/thumbnail"
+                normalized: "http://localhost:8010/api/v1/photosets/phase-11/normalized",
+                original: "http://localhost:8010/api/v1/photosets/phase-11/original",
+                thumbnail: "http://localhost:8010/api/v1/photosets/phase-11/thumbnail"
               },
               original_filename: "male_body_front.png",
               public_id: "phase-11-entry",
@@ -99,6 +101,7 @@ describe("Phase 11 character ingest", () => {
             }
           ],
           public_id: "phase-11-photoset",
+          rejected_entry_count: 0,
           status: "prepared"
         })
       })
@@ -107,25 +110,94 @@ describe("Phase 11 character ingest", () => {
         json: async () => ({
           public_id: "phase-11-character"
         })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          detail: "Preview export queued. Follow the job until it reaches a terminal state.",
+          job_public_id: "phase-11-job",
+          progress_percent: 0,
+          status: "queued",
+          step_name: "queued"
+        })
       });
 
     render(<CharacterImportIngest />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Create base character" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Build base character" })).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Create base character" }));
+    expect(screen.getByText("1 accepted")).toBeTruthy();
+    expect(screen.getByText("0 rejected")).toBeTruthy();
+    expect(screen.getByText("pass and warn can build")).toBeTruthy();
+    expect(screen.getByText("Accepted for character use")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Build base character" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
         2,
-        "http://10.0.0.102:8010/api/v1/characters",
+        "http://localhost:8010/api/v1/characters",
         expect.objectContaining({
           method: "POST"
         })
       );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "http://localhost:8010/api/v1/exports/characters/phase-11-character/preview",
+        { method: "POST" }
+      );
       expect(push).toHaveBeenCalledWith("/studio/characters/phase-11-character");
     });
+  });
+
+  it("blocks character creation when the persisted photoset has zero accepted entries", async () => {
+    window.history.replaceState({}, "", "/studio/characters/new?photoset=phase-11-photoset");
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        accepted_entry_count: 0,
+        entry_count: 1,
+        entries: [
+          {
+            accepted_for_character_use: false,
+            artifact_urls: {
+              normalized: "http://localhost:8010/api/v1/photosets/phase-11/normalized",
+              original: "http://localhost:8010/api/v1/photosets/phase-11/original",
+              thumbnail: "http://localhost:8010/api/v1/photosets/phase-11/thumbnail"
+            },
+            original_filename: "female_head_front.png",
+            public_id: "phase-11-entry",
+            qc_metrics: {
+              body_landmarks_detected: false,
+              blur_score: 55,
+              exposure_score: 96,
+              face_detected: true,
+              framing_label: "head-closeup"
+            },
+            qc_reasons: ["Image appears too blurry."],
+            qc_status: "fail"
+          }
+        ],
+        public_id: "phase-11-photoset",
+        rejected_entry_count: 1,
+        status: "prepared"
+      })
+    });
+
+    render(<CharacterImportIngest />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Build base character" })).toBeTruthy();
+    });
+
+    expect(screen.getByText("Rejected from character use")).toBeTruthy();
+    expect(
+      screen.getByText(/No accepted photos are available yet\./i)
+    ).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Build base character" }) as HTMLButtonElement).disabled
+    ).toBe(true);
   });
 });

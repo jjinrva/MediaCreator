@@ -59,7 +59,10 @@ def _latest_reconstruction_job(session: Session, character_asset_id: uuid.UUID) 
 def _export_job_payload(job: Job | None) -> dict[str, object]:
     if job is None:
         return {
+            "job_public_id": None,
             "status": "not-queued",
+            "step_name": None,
+            "progress_percent": None,
             "detail": (
                 "Phase 12 establishes the export destination only. No Blender export job has "
                 "been queued yet."
@@ -68,17 +71,26 @@ def _export_job_payload(job: Job | None) -> dict[str, object]:
 
     if job.status == "completed":
         return {
+            "job_public_id": job.public_id,
             "status": job.status,
+            "step_name": job.step_name,
+            "progress_percent": job.progress_percent,
             "detail": "Latest Blender preview export job completed successfully.",
         }
     if job.status == "failed":
         return {
+            "job_public_id": job.public_id,
             "status": job.status,
+            "step_name": job.step_name,
+            "progress_percent": job.progress_percent,
             "detail": job.error_summary or "Latest Blender preview export job failed.",
         }
 
     return {
+        "job_public_id": job.public_id,
         "status": job.status,
+        "step_name": job.step_name,
+        "progress_percent": job.progress_percent,
         "detail": f"Latest Blender preview export job is {job.status}.",
     }
 
@@ -86,7 +98,10 @@ def _export_job_payload(job: Job | None) -> dict[str, object]:
 def _reconstruction_job_payload(job: Job | None) -> dict[str, object]:
     if job is None:
         return {
+            "job_public_id": None,
             "status": "not-queued",
+            "step_name": None,
+            "progress_percent": None,
             "detail": (
                 "The high-detail path has not run yet. Queue it to generate a riggable base "
                 "summary and evaluate whether the current capture set qualifies for detail prep."
@@ -95,17 +110,26 @@ def _reconstruction_job_payload(job: Job | None) -> dict[str, object]:
 
     if job.status == "completed":
         return {
+            "job_public_id": job.public_id,
             "status": job.status,
+            "step_name": job.step_name,
+            "progress_percent": job.progress_percent,
             "detail": "Latest high-detail reconstruction job completed successfully.",
         }
     if job.status == "failed":
         return {
+            "job_public_id": job.public_id,
             "status": job.status,
+            "step_name": job.step_name,
+            "progress_percent": job.progress_percent,
             "detail": job.error_summary or "Latest high-detail reconstruction job failed.",
         }
 
     return {
+        "job_public_id": job.public_id,
         "status": job.status,
+        "step_name": job.step_name,
+        "progress_percent": job.progress_percent,
         "detail": f"Latest high-detail reconstruction job is {job.status}.",
     }
 

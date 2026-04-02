@@ -6,6 +6,7 @@ import { WardrobeCatalog } from "../../../components/wardrobe-catalog/WardrobeCa
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { SectionCard } from "../../../components/ui/SectionCard";
 import { StudioFrame } from "../../../components/ui/StudioFrame";
+import { getApiBase } from "../../../lib/runtimeApiBase";
 
 type WardrobeCatalogPayload = {
   generation_capability: {
@@ -33,11 +34,9 @@ type WardrobeCatalogPayload = {
   }>;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 async function getWardrobeCatalog(): Promise<WardrobeCatalogPayload> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/wardrobe`, { cache: "no-store" });
+  const response = await fetch(`${getApiBase()}/api/v1/wardrobe`, { cache: "no-store" });
 
   if (!response.ok) {
     throw new Error("Unable to load the wardrobe catalog.");

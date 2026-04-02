@@ -4,6 +4,7 @@ import { MotionAssignmentPanel } from "../../../components/motion-assignment-pan
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { SectionCard } from "../../../components/ui/SectionCard";
 import { StudioFrame } from "../../../components/ui/StudioFrame";
+import { getApiBase } from "../../../lib/runtimeApiBase";
 
 type MotionScreenPayload = {
   characters: Array<{
@@ -34,11 +35,9 @@ type MotionScreenPayload = {
   }>;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 async function getMotionScreen(): Promise<MotionScreenPayload> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/motion`, { cache: "no-store" });
+  const response = await fetch(`${getApiBase()}/api/v1/motion`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error("Unable to load the motion library.");
   }

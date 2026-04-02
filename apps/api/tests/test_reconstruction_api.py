@@ -13,6 +13,7 @@ from app.main import app
 from app.models.history_event import HistoryEvent
 from app.models.job import Job
 from app.models.storage_object import StorageObject
+from app.services.jobs import run_worker_once
 from tests.db_test_utils import migrated_database
 
 
@@ -134,8 +135,36 @@ def test_high_detail_reconstruction_route_writes_truthful_base_and_detail_prep_o
                     reconstruction_response = client.post(
                         f"/api/v1/exports/characters/{character_public_id}/reconstruction"
                     )
-                    assert reconstruction_response.status_code == 200
-                    payload = reconstruction_response.json()
+                    assert reconstruction_response.status_code == 202
+                    queued_payload = reconstruction_response.json()
+                    assert queued_payload["status"] == "queued"
+                    assert queued_payload["step_name"] == "queued"
+                    assert queued_payload["progress_percent"] == 0
+
+                    scaffold_response = client.get(
+                        f"/api/v1/exports/characters/{character_public_id}"
+                    )
+                    assert scaffold_response.status_code == 200
+                    scaffold_payload = scaffold_response.json()
+                    assert (
+                        scaffold_payload["reconstruction"]["reconstruction_job"]["status"]
+                        == "queued"
+                    )
+                    assert (
+                        scaffold_payload["reconstruction"]["reconstruction_job"]["job_public_id"]
+                        == queued_payload["job_public_id"]
+                    )
+                    assert (
+                        scaffold_payload["reconstruction"]["riggable_base_glb"]["status"]
+                        == "not-ready"
+                    )
+
+                assert run_worker_once(session_factory) == "completed"
+
+                with TestClient(app) as client:
+                    payload = client.get(
+                        f"/api/v1/exports/characters/{character_public_id}"
+                    ).json()
                     assert payload["reconstruction"]["detail_level"] == (
                         "riggable-base-plus-detail-prep"
                     )
@@ -187,6 +216,7 @@ def test_high_detail_reconstruction_route_writes_truthful_base_and_detail_prep_o
                     assert Path(detail_prep_storage.storage_path).exists()
                     assert reconstruction_job is not None
                     assert reconstruction_job.status == "completed"
+                    assert reconstruction_job.step_name == "completed"
                     assert reconstruction_job.output_storage_object_id is not None
                     assert len(history_events) == 3
                     assert {event.event_type for event in history_events} == {

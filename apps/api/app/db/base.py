@@ -8,6 +8,7 @@ from app.models.job import Job  # noqa: E402,F401
 from app.models.models_registry import ModelRegistry  # noqa: E402,F401
 from app.models.photoset_entry import PhotosetEntry  # noqa: E402,F401
 from app.models.pose_state import PoseState  # noqa: E402,F401
+from app.models.service_heartbeat import ServiceHeartbeat  # noqa: E402,F401
 from app.models.storage_object import StorageObject  # noqa: E402,F401
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "ModelRegistry",
     "PhotosetEntry",
     "PoseState",
+    "ServiceHeartbeat",
     "StorageObject",
 ]

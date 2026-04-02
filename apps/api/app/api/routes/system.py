@@ -11,8 +11,10 @@ router = APIRouter(prefix="/api/v1/system", tags=["system"])
 
 
 @router.get("/status", response_model=SystemStatusResponse)
-def read_system_status() -> SystemStatusResponse:
-    return SystemStatusResponse.model_validate(get_system_settings_payload())
+def read_system_status(
+    db_session: Session = Depends(get_db_session),
+) -> SystemStatusResponse:
+    return SystemStatusResponse.model_validate(get_system_settings_payload(db_session))
 
 
 @router.get("/diagnostics", response_model=DiagnosticsResponse)

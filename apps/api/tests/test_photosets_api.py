@@ -2,6 +2,7 @@ from collections.abc import Callable, Generator
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Literal
 
 from _pytest.monkeypatch import MonkeyPatch
 from fastapi.testclient import TestClient
@@ -16,6 +17,7 @@ from app.models.asset import Asset
 from app.models.history_event import HistoryEvent
 from app.models.photoset_entry import PhotosetEntry
 from app.models.storage_object import StorageObject
+from app.services import photo_prep
 from tests.db_test_utils import migrated_database
 
 
@@ -43,9 +45,73 @@ def _upload_image_bytes(color: tuple[int, int, int]) -> bytes:
     return buffer.getvalue()
 
 
+class _StubLandmarker:
+    def close(self) -> None:
+        return None
+
+
+def _build_qc_report(
+    status: Literal["pass", "warn", "fail"],
+    *,
+    blur_score: float = 140,
+    exposure_score: float = 98,
+    framing_label: str = "full-body",
+    reasons: list[str] | None = None,
+) -> photo_prep.PhotoQcReport:
+    return photo_prep.PhotoQcReport(
+        framing_label=framing_label,
+        metrics={
+            "face_detected": True,
+            "body_landmarks_detected": True,
+            "blur_score": blur_score,
+            "exposure_score": exposure_score,
+            "framing_label": framing_label,
+        },
+        reasons=reasons or [],
+        status=status,
+    )
+
+
+def _patch_deterministic_qc(
+    monkeypatch: MonkeyPatch,
+    reports: list[photo_prep.PhotoQcReport],
+) -> None:
+    queued_reports = list(reports)
+
+    monkeypatch.setattr(
+        photo_prep,
+        "_download_model_if_needed",
+        lambda url, destination: destination,
+    )
+    monkeypatch.setattr(photo_prep, "_create_face_landmarker", lambda model_path: _StubLandmarker())
+    monkeypatch.setattr(photo_prep, "_create_pose_landmarker", lambda model_path: _StubLandmarker())
+
+    def _fake_qc_report(
+        image: Image.Image,
+        face_landmarker: object,
+        pose_landmarker: object,
+    ) -> photo_prep.PhotoQcReport:
+        return queued_reports.pop(0)
+
+    monkeypatch.setattr(photo_prep, "_qc_report", _fake_qc_report)
+
+
 def test_photoset_upload_persists_derivatives_and_stable_qc_payload(
     monkeypatch: MonkeyPatch,
 ) -> None:
+    _patch_deterministic_qc(
+        monkeypatch,
+        [
+            _build_qc_report("pass"),
+            _build_qc_report(
+                "fail",
+                blur_score=55,
+                framing_label="head-closeup",
+                reasons=["Image appears too blurry."],
+            ),
+        ],
+    )
+
     with migrated_database("photosets_api") as database_url:
         engine, session_factory = _session_factory(database_url)
         app.dependency_overrides[get_db_session] = _override_db_session(session_factory)
@@ -88,12 +154,20 @@ def test_photoset_upload_persists_derivatives_and_stable_qc_payload(
                     assert upload_response.status_code == 201
                     payload = upload_response.json()
                     assert payload["asset_type"] == "photoset"
+                    assert payload["accepted_entry_count"] == 1
                     assert payload["entry_count"] == 2
+                    assert payload["rejected_entry_count"] == 1
                     assert len(payload["entries"]) == 2
+                    assert [entry["qc_status"] for entry in payload["entries"]] == ["pass", "fail"]
+                    assert [
+                        entry["accepted_for_character_use"] for entry in payload["entries"]
+                    ] == [True, False]
 
                     photoset_public_id = payload["public_id"]
                     first_entry = payload["entries"][0]
-                    assert first_entry["qc_status"] in {"pass", "warn", "fail"}
+                    second_entry = payload["entries"][1]
+                    assert first_entry["qc_status"] == "pass"
+                    assert first_entry["accepted_for_character_use"] is True
                     assert set(first_entry["qc_metrics"]) == {
                         "face_detected",
                         "body_landmarks_detected",
@@ -101,6 +175,9 @@ def test_photoset_upload_persists_derivatives_and_stable_qc_payload(
                         "exposure_score",
                         "framing_label",
                     }
+                    assert second_entry["qc_status"] == "fail"
+                    assert second_entry["accepted_for_character_use"] is False
+                    assert second_entry["qc_reasons"] == ["Image appears too blurry."]
 
                     detail_response = client.get(f"/api/v1/photosets/{photoset_public_id}")
                     assert detail_response.status_code == 200
@@ -131,6 +208,7 @@ def test_photoset_upload_persists_derivatives_and_stable_qc_payload(
                     assert len(photo_assets) == 2
                     assert len(entries) == 2
                     assert len(storage_objects) == 6
+                    assert [entry.qc_status for entry in entries] == ["pass", "fail"]
                     assert [event.event_type for event in history_events] == [
                         "photoset.created",
                         "photo.prepared",

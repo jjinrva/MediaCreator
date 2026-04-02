@@ -15,8 +15,11 @@ class VideoRenderHistoryEventResponse(BaseModel):
 
 class VideoRenderJobResponse(BaseModel):
     detail: str
+    job_public_id: uuid.UUID | None
+    progress_percent: int | None
     public_id: uuid.UUID | None
     status: str
+    step_name: str | None
 
 
 class VideoRenderOutputResponse(BaseModel):

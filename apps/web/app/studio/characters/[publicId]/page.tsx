@@ -13,6 +13,15 @@ import { PoseParameterEditor } from "../../../../components/pose-editor/PosePara
 import { ReconstructionStatus } from "../../../../components/reconstruction-status/ReconstructionStatus";
 import { SectionCard } from "../../../../components/ui/SectionCard";
 import { StudioFrame } from "../../../../components/ui/StudioFrame";
+import { getApiBase } from "../../../../lib/runtimeApiBase";
+
+type JobSummary = {
+  detail: string;
+  job_public_id: string | null;
+  progress_percent: number | null;
+  status: string;
+  step_name: string | null;
+};
 
 type CharacterDetail = {
   accepted_entries: Array<{
@@ -41,10 +50,7 @@ type CharacterDetail = {
 };
 
 type CharacterExports = {
-  export_job: {
-    detail: string;
-    status: string;
-  };
+  export_job: JobSummary;
   final_glb: {
     detail: string;
     status: string;
@@ -63,10 +69,7 @@ type CharacterExports = {
       status: string;
       url: string | null;
     };
-    reconstruction_job: {
-      detail: string;
-      status: string;
-    };
+    reconstruction_job: JobSummary;
     riggable_base_glb: {
       detail: string;
       status: string;
@@ -176,14 +179,9 @@ type CharacterLoraTraining = {
     status: string;
     storage_object_public_id: string | null;
   }>;
-  training_job: {
-    detail: string;
-    status: string;
-  };
+  training_job: JobSummary;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 function badgeClassName(status: "fail" | "pass" | "warn") {
   if (status === "pass") {
@@ -196,7 +194,7 @@ function badgeClassName(status: "fail" | "pass" | "warn") {
 }
 
 async function getCharacterDetail(publicId: string): Promise<CharacterDetail> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/characters/${publicId}`, {
+  const response = await fetch(`${getApiBase()}/api/v1/characters/${publicId}`, {
     cache: "no-store"
   });
 
@@ -212,7 +210,7 @@ async function getCharacterDetail(publicId: string): Promise<CharacterDetail> {
 }
 
 async function getCharacterExports(publicId: string): Promise<CharacterExports> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/exports/characters/${publicId}`, {
+  const response = await fetch(`${getApiBase()}/api/v1/exports/characters/${publicId}`, {
     cache: "no-store"
   });
 
@@ -228,7 +226,7 @@ async function getCharacterExports(publicId: string): Promise<CharacterExports> 
 }
 
 async function getCharacterBodyParameters(publicId: string): Promise<CharacterBodyParameters> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/body/characters/${publicId}`, {
+  const response = await fetch(`${getApiBase()}/api/v1/body/characters/${publicId}`, {
     cache: "no-store"
   });
 
@@ -244,7 +242,7 @@ async function getCharacterBodyParameters(publicId: string): Promise<CharacterBo
 }
 
 async function getCharacterPoseState(publicId: string): Promise<CharacterPoseState> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/pose/characters/${publicId}`, {
+  const response = await fetch(`${getApiBase()}/api/v1/pose/characters/${publicId}`, {
     cache: "no-store"
   });
 
@@ -260,7 +258,7 @@ async function getCharacterPoseState(publicId: string): Promise<CharacterPoseSta
 }
 
 async function getCharacterFacialParameters(publicId: string): Promise<CharacterFacialParameters> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/face/characters/${publicId}`, {
+  const response = await fetch(`${getApiBase()}/api/v1/face/characters/${publicId}`, {
     cache: "no-store"
   });
 
@@ -276,7 +274,7 @@ async function getCharacterFacialParameters(publicId: string): Promise<Character
 }
 
 async function getCharacterLoraDataset(publicId: string): Promise<CharacterLoraDataset> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/lora-datasets/characters/${publicId}`, {
+  const response = await fetch(`${getApiBase()}/api/v1/lora-datasets/characters/${publicId}`, {
     cache: "no-store"
   });
 
@@ -292,7 +290,7 @@ async function getCharacterLoraDataset(publicId: string): Promise<CharacterLoraD
 }
 
 async function getCharacterLoraTraining(publicId: string): Promise<CharacterLoraTraining> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/lora/characters/${publicId}`, {
+  const response = await fetch(`${getApiBase()}/api/v1/lora/characters/${publicId}`, {
     cache: "no-store"
   });
 
@@ -332,7 +330,7 @@ export default async function CharacterDetailPage({
   const title = character.label ?? `Character ${character.public_id.slice(0, 8)}`;
 
   return (
-    <StudioFrame currentPath="/studio/characters/new" phaseLabel="Phase 21">
+    <StudioFrame currentPath={`/studio/characters/${params.publicId}`} phaseLabel="Phase 21">
       <div className="statusStrip" role="status" aria-live="polite">
         <span className="statusBadge">registry asset</span>
         <span className="statusBadge">history recorded</span>
@@ -444,6 +442,11 @@ export default async function CharacterDetailPage({
             alt={`${title} GLB preview`}
             characterPublicId={character.public_id}
             detail={exportsPayload.preview_glb.detail}
+            jobDetail={exportsPayload.export_job.detail}
+            jobProgressPercent={exportsPayload.export_job.progress_percent}
+            jobPublicId={exportsPayload.export_job.job_public_id}
+            jobStatus={exportsPayload.export_job.status}
+            jobStepName={exportsPayload.export_job.step_name}
             src={exportsPayload.preview_glb.url}
             status={exportsPayload.preview_glb.status}
             textureFidelity={exportsPayload.texture_material.current_texture_fidelity}
@@ -452,7 +455,11 @@ export default async function CharacterDetailPage({
             characterPublicId={character.public_id}
             detail={exportsPayload.reconstruction.detail}
             detailLevel={exportsPayload.reconstruction.detail_level}
+            jobDetail={exportsPayload.reconstruction.reconstruction_job.detail}
+            jobProgressPercent={exportsPayload.reconstruction.reconstruction_job.progress_percent}
+            jobPublicId={exportsPayload.reconstruction.reconstruction_job.job_public_id}
             jobStatus={exportsPayload.reconstruction.reconstruction_job.status}
+            jobStepName={exportsPayload.reconstruction.reconstruction_job.step_name}
             strategy={exportsPayload.reconstruction.strategy}
           />
           <dl className="keyValueList">
@@ -564,7 +571,10 @@ export default async function CharacterDetailPage({
               status: entry.status
             }))}
             trainingJobDetail={loraTraining.training_job.detail}
+            trainingJobProgressPercent={loraTraining.training_job.progress_percent}
+            trainingJobPublicId={loraTraining.training_job.job_public_id}
             trainingJobStatus={loraTraining.training_job.status}
+            trainingJobStepName={loraTraining.training_job.step_name}
           />
           <dl className="keyValueList">
             <div className="keyValueRow">

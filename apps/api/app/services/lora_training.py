@@ -476,15 +476,36 @@ def mark_lora_training_job_failed(
 
 def _job_payload(job: Job | None) -> dict[str, object]:
     if job is None:
-        return {"status": "not-queued", "detail": "No LoRA training job has been queued yet."}
+        return {
+            "job_public_id": None,
+            "status": "not-queued",
+            "step_name": None,
+            "progress_percent": None,
+            "detail": "No LoRA training job has been queued yet.",
+        }
     if job.status == "completed":
-        return {"status": job.status, "detail": "Latest LoRA training job completed successfully."}
+        return {
+            "job_public_id": job.public_id,
+            "status": job.status,
+            "step_name": job.step_name,
+            "progress_percent": job.progress_percent,
+            "detail": "Latest LoRA training job completed successfully.",
+        }
     if job.status == "failed":
         return {
+            "job_public_id": job.public_id,
             "status": job.status,
+            "step_name": job.step_name,
+            "progress_percent": job.progress_percent,
             "detail": job.error_summary or "Latest LoRA training job failed.",
         }
-    return {"status": job.status, "detail": f"Latest LoRA training job is {job.status}."}
+    return {
+        "job_public_id": job.public_id,
+        "status": job.status,
+        "step_name": job.step_name,
+        "progress_percent": job.progress_percent,
+        "detail": f"Latest LoRA training job is {job.status}.",
+    }
 
 
 def get_character_lora_training_payload(

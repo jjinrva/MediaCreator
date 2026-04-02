@@ -3,6 +3,7 @@ import React from "react";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { SectionCard } from "../../../components/ui/SectionCard";
 import { StudioFrame } from "../../../components/ui/StudioFrame";
+import { getApiBase } from "../../../lib/runtimeApiBase";
 import { GenerationWorkspace } from "./GenerationWorkspace";
 
 type WorkspacePayload = {
@@ -79,11 +80,9 @@ type WorkspacePayload = {
   }>;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 async function getWorkspace(): Promise<WorkspacePayload> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/generation`, { cache: "no-store" });
+  const response = await fetch(`${getApiBase()}/api/v1/generation`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error("Unable to load the generation workspace.");
   }

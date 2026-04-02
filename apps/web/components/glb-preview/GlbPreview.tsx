@@ -1,32 +1,54 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import React from "react";
+
+import { JobProgressCard } from "../jobs/JobProgressCard";
+import type { JobProgressSummary } from "../../lib/jobProgress";
+import { isInFlightJobStatus } from "../../lib/jobProgress";
+import { getApiBase } from "../../lib/runtimeApiBase";
 
 type GlbPreviewProps = {
   alt: string;
   characterPublicId: string;
   detail: string;
+  jobDetail: string;
+  jobProgressPercent: number | null;
+  jobPublicId: string | null;
+  jobStatus: string;
+  jobStepName: string | null;
   src: string | null;
   status: string;
   textureFidelity: string;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 export function GlbPreview({
   alt,
   characterPublicId,
   detail,
+  jobDetail,
+  jobProgressPercent,
+  jobPublicId,
+  jobStatus,
+  jobStepName,
   src,
   status,
   textureFidelity
 }: GlbPreviewProps) {
-  const router = useRouter();
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [actionSummary, setActionSummary] = React.useState<string | null>(null);
   const [isGenerating, setIsGenerating] = React.useState(false);
+  const [queuedJob, setQueuedJob] = React.useState<JobProgressSummary | null>(null);
+
+  const latestJob = queuedJob ?? {
+    detail: jobDetail,
+    jobPublicId,
+    progressPercent: jobProgressPercent,
+    status: jobStatus,
+    stepName: jobStepName
+  };
+  const hasTrackedJob = latestJob.jobPublicId !== null && latestJob.status !== "not-queued";
+  const isJobInFlight = isInFlightJobStatus(latestJob.status);
 
   React.useEffect(() => {
     if (!src) {
@@ -43,7 +65,7 @@ export function GlbPreview({
       setIsGenerating(true);
 
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/exports/characters/${characterPublicId}/preview`,
+        `${getApiBase()}/api/v1/exports/characters/${characterPublicId}/preview`,
         { method: "POST" }
       );
       if (!response.ok) {
@@ -51,20 +73,26 @@ export function GlbPreview({
       }
 
       const payload = (await response.json()) as {
-        export_job: { detail: string; status: string };
-        preview_glb: { detail: string; status: string };
+        detail: string;
+        job_public_id: string;
+        progress_percent: number;
+        status: string;
+        step_name: string | null;
       };
-      if (payload.preview_glb.status !== "available") {
-        throw new Error(payload.export_job.detail);
-      }
 
-      setActionSummary(payload.export_job.detail);
-      router.refresh();
+      setQueuedJob({
+        detail: payload.detail,
+        jobPublicId: payload.job_public_id,
+        progressPercent: payload.progress_percent,
+        status: payload.status,
+        stepName: payload.step_name
+      });
+      setActionSummary(payload.detail);
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : "Preview export failed before the Blender runtime completed.";
+          : "Preview export failed before the queue request completed.";
       setActionError(message);
     } finally {
       setIsGenerating(false);
@@ -103,13 +131,15 @@ export function GlbPreview({
           onClick={() => {
             void handleGeneratePreview();
           }}
-          disabled={isGenerating}
+          disabled={isGenerating || isJobInFlight}
         >
           {isGenerating
-            ? "Generating preview GLB..."
-            : src
-              ? "Regenerate preview GLB"
-              : "Generate preview GLB"}
+            ? "Queueing preview GLB..."
+            : isJobInFlight
+              ? "Preview job in progress..."
+              : src
+                ? "Regenerate preview GLB"
+                : "Generate preview GLB"}
         </button>
         {actionError ? (
           <span className="previewActionError" role="alert">
@@ -120,6 +150,9 @@ export function GlbPreview({
           <span className="previewActionSummary" role="status">
             {actionSummary}
           </span>
+        ) : null}
+        {hasTrackedJob ? (
+          <JobProgressCard initialJob={latestJob} title="Preview generation job" />
         ) : null}
       </div>
     </div>

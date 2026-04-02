@@ -40,7 +40,7 @@ describe("Phase 20 LoRA dataset controls", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://10.0.0.102:8010/api/v1/lora-datasets/characters/phase-20-character",
+        "http://localhost:8010/api/v1/lora-datasets/characters/phase-20-character",
         { method: "POST" }
       );
       expect(refresh).toHaveBeenCalled();

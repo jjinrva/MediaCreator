@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import React from "react";
 
+import { getApiBase } from "../../../lib/runtimeApiBase";
+
 type GenerationWorkspaceProps = {
   characters: Array<{
     label: string;
@@ -84,8 +86,6 @@ type SearchResult = {
   versionName: string;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 function expandPrompt(
   promptText: string,
@@ -149,7 +149,7 @@ export function GenerationWorkspace({
       setActionError(null);
       setActionSummary(null);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/generation/requests`, {
+      const response = await fetch(`${getApiBase()}/api/v1/generation/requests`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -186,7 +186,7 @@ export function GenerationWorkspace({
       setIsSearching(true);
       setActionError(null);
       const response = await fetch(
-        `${API_BASE_URL}/api/v1/generation/external-loras/search?q=${encodeURIComponent(civitaiQuery)}`
+        `${getApiBase()}/api/v1/generation/external-loras/search?q=${encodeURIComponent(civitaiQuery)}`
       );
       const payload = (await response.json()) as { detail?: string; results?: SearchResult[] };
       if (!response.ok) {
@@ -207,7 +207,7 @@ export function GenerationWorkspace({
       setActionError(null);
       setActionSummary(null);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/generation/external-loras/import`, {
+      const response = await fetch(`${getApiBase()}/api/v1/generation/external-loras/import`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

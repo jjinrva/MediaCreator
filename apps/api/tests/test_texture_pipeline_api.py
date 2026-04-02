@@ -12,6 +12,7 @@ from app.db.session import get_db_session
 from app.main import app
 from app.models.history_event import HistoryEvent
 from app.models.storage_object import StorageObject
+from app.services.jobs import run_worker_once
 from tests.db_test_utils import migrated_database
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -80,8 +81,8 @@ def test_preview_export_generates_base_texture_artifact_and_embeds_texture_data(
                             (
                                 "photos",
                                 (
-                                    "male_body_front.png",
-                                    _sample_image_bytes("male_body_front.png"),
+                                    "male_head_front.png",
+                                    _sample_image_bytes("male_head_front.png"),
                                     "image/png",
                                 ),
                             ),
@@ -107,8 +108,15 @@ def test_preview_export_generates_base_texture_artifact_and_embeds_texture_data(
                     export_response = client.post(
                         f"/api/v1/exports/characters/{character_public_id}/preview"
                     )
-                    assert export_response.status_code == 200
-                    payload = export_response.json()
+                    assert export_response.status_code == 202
+                    assert export_response.json()["status"] == "queued"
+
+                assert run_worker_once(session_factory) == "completed"
+
+                with TestClient(app) as client:
+                    payload = client.get(
+                        f"/api/v1/exports/characters/{character_public_id}"
+                    ).json()
                     assert (
                         payload["texture_material"]["current_texture_fidelity"]
                         == "base-textured"

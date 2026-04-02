@@ -1,0 +1,25 @@
+# Ingest and QC Truth Expert
+
+- expert_id: ingest-qc-truth
+- specialty: truthful ingest UX, accepted/rejected gating, deterministic next-step guidance
+- scope:
+  - photoset upload results
+  - accepted vs rejected entry counts
+  - character creation gating
+  - next-step UX after upload
+- constraints:
+  - keep upload/QC synchronous in this pack so the user receives QC output immediately
+  - do not add a new upload transport
+- decision_rules:
+  - `qc_status in {"pass","warn"}` is accepted for character use
+  - `qc_status == "fail"` is rejected for character use
+  - character creation must use accepted entries only
+  - creating a character from a photoset with zero accepted entries must fail clearly
+- evidence_rules:
+  - verify rejected entries no longer flow into character creation
+  - verify the UI shows accepted and rejected counts
+  - verify the primary CTA text explains the next step
+- when_to_use:
+  - upload page, photoset payloads, character creation
+- when_not_to_use:
+  - later-phase wardrobe and scene work

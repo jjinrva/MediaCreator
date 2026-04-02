@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import React from "react";
 import { useDropzone } from "react-dropzone";
 
+import { getApiBase } from "../../lib/runtimeApiBase";
 import { EmptyState } from "../ui/EmptyState";
 import { InfoTooltip } from "../ui/InfoTooltip";
 import { SectionCard } from "../ui/SectionCard";
@@ -18,6 +19,7 @@ type StagedPhoto = {
 };
 
 type PersistedPhotosetEntry = {
+  accepted_for_character_use: boolean;
   artifact_urls: {
     normalized: string;
     original: string;
@@ -37,14 +39,24 @@ type PersistedPhotosetEntry = {
 };
 
 type PersistedPhotoset = {
+  accepted_entry_count: number;
   entry_count: number;
   entries: PersistedPhotosetEntry[];
   public_id: string;
+  rejected_entry_count: number;
   status: string;
 };
 
 type CreatedCharacter = {
   public_id: string;
+};
+
+type QueuedJobResponse = {
+  detail?: string;
+  job_public_id: string;
+  progress_percent: number;
+  status: string;
+  step_name: string | null;
 };
 
 const CHARACTER_LABEL_FIELD: FieldMetadata = {
@@ -66,8 +78,6 @@ const ACCEPTED_IMAGE_TYPES = {
   "image/png": [".png"],
   "image/webp": [".webp"]
 } as const;
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 function buildPhotoId(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`;
@@ -104,6 +114,8 @@ export function CharacterImportIngest() {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [submissionSummary, setSubmissionSummary] = React.useState<string | null>(null);
   const photosRef = React.useRef<StagedPhoto[]>([]);
+  const acceptedEntryCount = persistedPhotoset?.accepted_entry_count ?? 0;
+  const rejectedEntryCount = persistedPhotoset?.rejected_entry_count ?? 0;
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -133,7 +145,7 @@ export function CharacterImportIngest() {
       setLoadError(null);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/v1/photosets/${currentPhotosetId}`, {
+        const response = await fetch(`${getApiBase()}/api/v1/photosets/${currentPhotosetId}`, {
           signal: controller.signal
         });
 
@@ -239,7 +251,7 @@ export function CharacterImportIngest() {
       setIsSubmitting(true);
       setLoadError(null);
       setIsCreatingCharacter(false);
-      const response = await fetch(`${API_BASE_URL}/api/v1/photosets`, {
+      const response = await fetch(`${getApiBase()}/api/v1/photosets`, {
         body: payload,
         method: "POST"
       });
@@ -255,7 +267,7 @@ export function CharacterImportIngest() {
       setPersistedPhotoset(uploadedPhotoset);
       setCurrentPhotosetId(uploadedPhotoset.public_id);
       setSubmissionSummary(
-        `${uploadedPhotoset.entry_count} photo(s) uploaded. QC results are now loaded from the API and survive reload.`
+        `${uploadedPhotoset.accepted_entry_count} accepted, ${uploadedPhotoset.rejected_entry_count} rejected. Review QC, then build the base character from accepted references only.`
       );
       window.history.replaceState(
         {},
@@ -277,22 +289,42 @@ export function CharacterImportIngest() {
     try {
       setIsCreatingCharacter(true);
       setLoadError(null);
-      const response = await fetch(`${API_BASE_URL}/api/v1/characters`, {
+      const response = await fetch(`${getApiBase()}/api/v1/characters`, {
         body: JSON.stringify({ photoset_public_id: persistedPhotoset.public_id }),
         headers: {
           "content-type": "application/json"
         },
         method: "POST"
       });
+      const payload = (await response.json().catch(() => null)) as
+        | { detail?: string; public_id?: string }
+        | null;
 
       if (!response.ok) {
-        throw new Error("Character creation failed.");
+        throw new Error(payload?.detail ?? "Character creation failed.");
       }
 
-      const createdCharacter = (await response.json()) as CreatedCharacter;
+      const createdCharacter = payload as CreatedCharacter;
+      const previewResponse = await fetch(
+        `${getApiBase()}/api/v1/exports/characters/${createdCharacter.public_id}/preview`,
+        { method: "POST" }
+      );
+      const previewPayload = (await previewResponse.json().catch(() => null)) as
+        | { detail?: string }
+        | QueuedJobResponse
+        | null;
+
+      if (!previewResponse.ok) {
+        throw new Error(previewPayload?.detail ?? "Preview export queue request failed.");
+      }
+
       router.push(`/studio/characters/${createdCharacter.public_id}`);
-    } catch {
-      setLoadError("Base character creation failed before the detail route could load.");
+    } catch (error) {
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Base character creation failed before the detail route could load."
+      );
       setIsCreatingCharacter(false);
     }
   }
@@ -313,6 +345,13 @@ export function CharacterImportIngest() {
         title="Base character setup"
         description="Phase 11 uploads a photoset, stores QC-backed prepared references, and creates exactly one base character record from that persisted submission."
       >
+        <div className="statusStrip" role="status" aria-live="polite">
+          <span className="statusBadge">1. upload photos</span>
+          <span className="statusBadge">2. review accepted vs rejected QC</span>
+          <span className="statusBadge">3. build base character</span>
+          <span className="statusBadge">4. preview generation</span>
+        </div>
+
         <form className="characterImportForm" onSubmit={handleSubmit}>
           <div className="fieldStack">
             <FieldHeader field={CHARACTER_LABEL_FIELD} />
@@ -388,6 +427,14 @@ export function CharacterImportIngest() {
               {submissionSummary}
             </p>
           ) : null}
+
+          {persistedPhotoset ? (
+            <div className="statusStrip" role="status" aria-live="polite">
+              <span className="statusBadge">{`${acceptedEntryCount} accepted`}</span>
+              <span className="statusBadge">{`${rejectedEntryCount} rejected`}</span>
+              <span className="statusBadge">pass and warn can build</span>
+            </div>
+          ) : null}
         </form>
       </SectionCard>
 
@@ -436,6 +483,11 @@ export function CharacterImportIngest() {
                 <div className="thumbnailMeta">
                   <strong>{entry.original_filename}</strong>
                   <span>{entry.qc_metrics.framing_label}</span>
+                  <span className="thumbnailBadge">
+                    {entry.accepted_for_character_use
+                      ? "Accepted for character use"
+                      : "Rejected from character use"}
+                  </span>
                   <span className={badgeClassName(entry.qc_status)}>
                     {`QC ${entry.qc_status}`}
                   </span>
@@ -469,17 +521,19 @@ export function CharacterImportIngest() {
         {persistedPhotoset ? (
           <div className="characterImportActionRow">
             <span className="secondaryNote">
-              The current photoset is persisted. Creating the base character writes a single
-              character asset, links it back to this photoset, and redirects to the API-backed
-              detail page.
+              {acceptedEntryCount > 0
+                ? `${acceptedEntryCount} accepted photo(s) will be used for the base character. ${rejectedEntryCount} rejected photo(s) remain visible below but are excluded. Accepted means QC pass or warn; rejected means QC fail.`
+                : `No accepted photos are available yet. ${rejectedEntryCount} rejected photo(s) remain visible below, and base character creation is blocked until at least one QC pass or warn image exists.`}
             </span>
             <button
               type="button"
               className="themeToggle"
               onClick={handleCreateCharacter}
-              disabled={isLoadingPersisted || isCreatingCharacter}
+              disabled={isLoadingPersisted || isCreatingCharacter || acceptedEntryCount === 0}
             >
-              {isCreatingCharacter ? "Opening base character" : "Create base character"}
+              {isCreatingCharacter
+                ? "Building character and queueing preview"
+                : "Build base character"}
             </button>
           </div>
         ) : null}

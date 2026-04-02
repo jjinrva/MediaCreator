@@ -101,7 +101,7 @@ describe("Phase 25 generation workspace", () => {
     );
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("http://10.0.0.102:8010/api/v1/generation/requests", {
+      expect(fetchMock).toHaveBeenCalledWith("http://localhost:8010/api/v1/generation/requests", {
         body: JSON.stringify({
           external_lora_registry_public_id: null,
           local_lora_registry_public_id: "registry-1",

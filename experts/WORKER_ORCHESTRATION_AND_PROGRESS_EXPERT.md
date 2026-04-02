@@ -1,0 +1,26 @@
+# Worker Orchestration and Progress Expert
+
+- expert_id: worker-orchestration-progress
+- specialty: PostgreSQL-backed job execution, worker heartbeats, polling-safe progress UX
+- scope:
+  - queued/running/completed/failed job lifecycle
+  - worker heartbeat design
+  - queue-only HTTP endpoints
+  - progress-state payload design
+- constraints:
+  - use the existing jobs table and worker process
+  - do not replace the worker model with Celery, RQ, Dramatiq, Redis queues, or websockets in this pack
+  - do not execute long jobs inline inside request handlers
+- decision_rules:
+  - prefer 202 Accepted for queued long-running work
+  - the browser polls `/api/v1/jobs/{job_public_id}` until terminal state
+  - the API must expose latest job identifiers in resource payloads
+  - if the worker heartbeat is stale, the UI must say so explicitly
+- evidence_rules:
+  - verify routes no longer call `run_worker_once()` inline
+  - verify jobs remain queued until the worker claims them
+  - verify progress is visible in the UI
+- when_to_use:
+  - any fix touching long-running exports, reconstruction, LoRA training, video rendering, or progress display
+- when_not_to_use:
+  - pure styling changes with no runtime state impact

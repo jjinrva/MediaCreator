@@ -12,6 +12,16 @@ vi.mock("next/navigation", () => ({
   })
 }));
 
+vi.mock("../../components/jobs/JobProgressCard", () => ({
+  JobProgressCard: ({
+    initialJob,
+    title
+  }: {
+    initialJob: { jobPublicId: string | null; status: string };
+    title: string;
+  }) => <div>{`${title}:${initialJob.status}:${initialJob.jobPublicId}`}</div>
+}));
+
 beforeEach(() => {
   refresh.mockReset();
 });
@@ -33,7 +43,10 @@ describe("Phase 21 LoRA training controls", () => {
         missingRequirements={["ai_toolkit_missing"]}
         registry={[]}
         trainingJobDetail="No LoRA training job has been queued yet."
+        trainingJobProgressPercent={null}
+        trainingJobPublicId={null}
         trainingJobStatus="not-queued"
+        trainingJobStepName={null}
       />
     );
 
@@ -44,14 +57,23 @@ describe("Phase 21 LoRA training controls", () => {
   });
 
   it("posts the training request and refreshes when the trainer is ready", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      json: async () => ({
-        training_job: {
-          detail: "Latest LoRA training job completed successfully.",
-          status: "completed"
-        }
-      }),
-      ok: true
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input.endsWith("/api/v1/lora/characters/phase-21-character")) {
+        return {
+          json: async () => ({
+            training_job: {
+              detail: "LoRA training queued. Follow the job until it reaches a terminal state.",
+              job_public_id: "job-lora-1",
+              progress_percent: 0,
+              status: "queued",
+              step_name: "queued"
+            }
+          }),
+          ok: true
+        };
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -64,8 +86,11 @@ describe("Phase 21 LoRA training controls", () => {
         datasetStatus="available"
         missingRequirements={[]}
         registry={[{ modelName: "working-run", promptHandle: "@character_ready", status: "working" }]}
-        trainingJobDetail="Latest LoRA training job is queued."
-        trainingJobStatus="queued"
+        trainingJobDetail="No LoRA training job has been queued yet."
+        trainingJobProgressPercent={null}
+        trainingJobPublicId={null}
+        trainingJobStatus="not-queued"
+        trainingJobStepName={null}
       />
     );
 
@@ -73,10 +98,11 @@ describe("Phase 21 LoRA training controls", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://10.0.0.102:8010/api/v1/lora/characters/phase-21-character",
+        "http://localhost:8010/api/v1/lora/characters/phase-21-character",
         { method: "POST" }
       );
-      expect(refresh).toHaveBeenCalled();
+      expect(screen.getByText("LoRA training job:queued:job-lora-1")).toBeTruthy();
+      expect(refresh).not.toHaveBeenCalled();
     });
   });
 });

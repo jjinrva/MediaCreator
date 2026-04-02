@@ -1,10 +1,12 @@
 import os
+import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.services.storage_service import resolve_storage_layout
 
@@ -69,6 +71,14 @@ class GenerationCapability(BaseModel):
     checkpoint_files_detected: list[str]
     vae_files_detected: list[str]
     missing_requirements: list[str]
+
+
+class LoraActivationResolution(BaseModel):
+    loader: str = "comfyui-lora-loader"
+    model_name: str
+    prompt_handle: str
+    storage_object_public_id: uuid.UUID
+    storage_path: str
 
 
 def get_generation_capability(
@@ -150,4 +160,22 @@ def get_generation_capability(
         checkpoint_files_detected=checkpoint_files,
         vae_files_detected=vae_files,
         missing_requirements=missing_requirements,
+    )
+
+
+def resolve_generation_lora_activation(
+    session: Session,
+    character_public_id: uuid.UUID,
+) -> LoraActivationResolution | None:
+    from app.services.lora_training import resolve_active_lora_artifact
+
+    active_artifact = resolve_active_lora_artifact(session, character_public_id)
+    if active_artifact is None:
+        return None
+
+    return LoraActivationResolution(
+        model_name=str(active_artifact["model_name"]),
+        prompt_handle=str(active_artifact["prompt_handle"]),
+        storage_object_public_id=uuid.UUID(str(active_artifact["storage_object_public_id"])),
+        storage_path=str(active_artifact["storage_path"]),
     )

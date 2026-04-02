@@ -81,9 +81,9 @@ describe("Phase 11 character ingest", () => {
           entries: [
             {
               artifact_urls: {
-                normalized: "http://127.0.0.1:8010/api/v1/photosets/phase-11/normalized",
-                original: "http://127.0.0.1:8010/api/v1/photosets/phase-11/original",
-                thumbnail: "http://127.0.0.1:8010/api/v1/photosets/phase-11/thumbnail"
+                normalized: "http://10.0.0.102:8010/api/v1/photosets/phase-11/normalized",
+                original: "http://10.0.0.102:8010/api/v1/photosets/phase-11/original",
+                thumbnail: "http://10.0.0.102:8010/api/v1/photosets/phase-11/thumbnail"
               },
               original_filename: "male_body_front.png",
               public_id: "phase-11-entry",
@@ -120,7 +120,7 @@ describe("Phase 11 character ingest", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
         2,
-        "http://127.0.0.1:8010/api/v1/characters",
+        "http://10.0.0.102:8010/api/v1/characters",
         expect.objectContaining({
           method: "POST"
         })

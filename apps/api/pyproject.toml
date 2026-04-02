@@ -46,3 +46,7 @@ select = ["E", "F", "I"]
 python_version = "3.12"
 strict = true
 files = ["app", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["cv2", "mediapipe", "mediapipe.*", "numpy", "PIL"]
+ignore_missing_imports = true

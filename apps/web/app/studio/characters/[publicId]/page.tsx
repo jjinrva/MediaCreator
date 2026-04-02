@@ -6,8 +6,11 @@ import { notFound } from "next/navigation";
 import { BodyParameterEditor } from "../../../../components/body-editor/BodyParameterEditor";
 import { FaceParameterEditor } from "../../../../components/face-editor/FaceParameterEditor";
 import { GlbPreview } from "../../../../components/glb-preview/GlbPreview";
+import { LoraDatasetStatus } from "../../../../components/lora-dataset-status/LoraDatasetStatus";
+import { LoraTrainingStatus } from "../../../../components/lora-training-status/LoraTrainingStatus";
 import { PageHeader } from "../../../../components/ui/PageHeader";
 import { PoseParameterEditor } from "../../../../components/pose-editor/PoseParameterEditor";
+import { ReconstructionStatus } from "../../../../components/reconstruction-status/ReconstructionStatus";
 import { SectionCard } from "../../../../components/ui/SectionCard";
 import { StudioFrame } from "../../../../components/ui/StudioFrame";
 
@@ -51,6 +54,39 @@ type CharacterExports = {
     detail: string;
     status: string;
     url: string | null;
+  };
+  reconstruction: {
+    detail: string;
+    detail_level: string;
+    detail_prep_artifact: {
+      detail: string;
+      status: string;
+      url: string | null;
+    };
+    reconstruction_job: {
+      detail: string;
+      status: string;
+    };
+    riggable_base_glb: {
+      detail: string;
+      status: string;
+      url: string | null;
+    };
+    strategy: string;
+  };
+  texture_material: {
+    base_texture_artifact: {
+      detail: string;
+      status: string;
+      url: string | null;
+    };
+    current_texture_fidelity: string;
+    detail: string;
+    refined_texture_artifact: {
+      detail: string;
+      status: string;
+      url: string | null;
+    };
   };
 };
 
@@ -102,8 +138,52 @@ type CharacterFacialParameters = {
   current_values: Record<string, number>;
 };
 
+type CharacterLoraDataset = {
+  dataset: {
+    dataset_version: string;
+    detail: string;
+    entry_count: number;
+    manifest_url: string | null;
+    prompt_contract_version: string;
+    prompt_expansion: string;
+    prompt_handle: string;
+    status: string;
+    visible_tags: string[];
+  };
+};
+
+type CharacterLoraTraining = {
+  active_model: {
+    model_name: string;
+    prompt_handle: string;
+    status: string;
+    storage_object_public_id: string;
+    storage_path: string;
+  } | null;
+  capability: {
+    ai_toolkit_bin: string | null;
+    detail: string;
+    loras_root: string;
+    missing_requirements: string[];
+    status: string;
+  };
+  character_public_id: string;
+  registry: Array<{
+    details: Record<string, unknown>;
+    model_name: string;
+    prompt_handle: string;
+    public_id: string;
+    status: string;
+    storage_object_public_id: string | null;
+  }>;
+  training_job: {
+    detail: string;
+    status: string;
+  };
+};
+
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://127.0.0.1:8010";
+  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 function badgeClassName(status: "fail" | "pass" | "warn") {
   if (status === "pass") {
@@ -195,22 +275,64 @@ async function getCharacterFacialParameters(publicId: string): Promise<Character
   return (await response.json()) as CharacterFacialParameters;
 }
 
+async function getCharacterLoraDataset(publicId: string): Promise<CharacterLoraDataset> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/lora-datasets/characters/${publicId}`, {
+    cache: "no-store"
+  });
+
+  if (response.status === 404) {
+    notFound();
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to load the character LoRA dataset contract.");
+  }
+
+  return (await response.json()) as CharacterLoraDataset;
+}
+
+async function getCharacterLoraTraining(publicId: string): Promise<CharacterLoraTraining> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/lora/characters/${publicId}`, {
+    cache: "no-store"
+  });
+
+  if (response.status === 404) {
+    notFound();
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to load the character LoRA training status.");
+  }
+
+  return (await response.json()) as CharacterLoraTraining;
+}
+
 export default async function CharacterDetailPage({
   params
 }: {
   params: { publicId: string };
 }) {
-  const [character, exportsPayload, bodyParameters, poseState, facialParameters] = await Promise.all([
+  const [
+    character,
+    exportsPayload,
+    bodyParameters,
+    poseState,
+    facialParameters,
+    loraDataset,
+    loraTraining
+  ] = await Promise.all([
     getCharacterDetail(params.publicId),
     getCharacterExports(params.publicId),
     getCharacterBodyParameters(params.publicId),
     getCharacterPoseState(params.publicId),
-    getCharacterFacialParameters(params.publicId)
+    getCharacterFacialParameters(params.publicId),
+    getCharacterLoraDataset(params.publicId),
+    getCharacterLoraTraining(params.publicId)
   ]);
   const title = character.label ?? `Character ${character.public_id.slice(0, 8)}`;
 
   return (
-    <StudioFrame currentPath="/studio/characters/new" phaseLabel="Phase 17">
+    <StudioFrame currentPath="/studio/characters/new" phaseLabel="Phase 21">
       <div className="statusStrip" role="status" aria-live="polite">
         <span className="statusBadge">registry asset</span>
         <span className="statusBadge">history recorded</span>
@@ -218,9 +340,9 @@ export default async function CharacterDetailPage({
       </div>
 
       <PageHeader
-        eyebrow="Phase 17"
+        eyebrow="Phase 21"
         title={title}
-        summary={`This character detail route now persists body, pose, and face controls from the API, and the Outputs section can now generate a truthful Blender-backed preview GLB.`}
+        summary={`This detail route now keeps body, pose, face, reconstruction, dataset, and LoRA registry state in sync from the API. Phase 21 adds truthful local LoRA training readiness and active-model reporting without pretending AI Toolkit is installed.`}
         actions={<span className="headerCallout">{character.status}</span>}
       />
 
@@ -316,7 +438,7 @@ export default async function CharacterDetailPage({
 
         <SectionCard
           title="Outputs"
-          description="The GLB preview path and final export destination are API-backed now, and Phase 17 can generate a real Blender preview GLB through the local Rigify export job."
+          description="The GLB preview path, high-detail reconstruction path, and final export destination are API-backed now. Phase 18 reports the current reconstruction level truthfully and only writes a detail-prep artifact when the capture set qualifies."
         >
           <GlbPreview
             alt={`${title} GLB preview`}
@@ -324,11 +446,23 @@ export default async function CharacterDetailPage({
             detail={exportsPayload.preview_glb.detail}
             src={exportsPayload.preview_glb.url}
             status={exportsPayload.preview_glb.status}
+            textureFidelity={exportsPayload.texture_material.current_texture_fidelity}
+          />
+          <ReconstructionStatus
+            characterPublicId={character.public_id}
+            detail={exportsPayload.reconstruction.detail}
+            detailLevel={exportsPayload.reconstruction.detail_level}
+            jobStatus={exportsPayload.reconstruction.reconstruction_job.status}
+            strategy={exportsPayload.reconstruction.strategy}
           />
           <dl className="keyValueList">
             <div className="keyValueRow">
               <dt>Preview GLB</dt>
               <dd>{exportsPayload.preview_glb.status}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Preview texture fidelity</dt>
+              <dd>{exportsPayload.texture_material.current_texture_fidelity}</dd>
             </div>
             <div className="keyValueRow">
               <dt>Final GLB export</dt>
@@ -337,6 +471,121 @@ export default async function CharacterDetailPage({
             <div className="keyValueRow">
               <dt>Export job</dt>
               <dd>{exportsPayload.export_job.status}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>High-detail detail level</dt>
+              <dd>{exportsPayload.reconstruction.detail_level}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>High-detail strategy</dt>
+              <dd>{exportsPayload.reconstruction.strategy}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Riggable base asset</dt>
+              <dd>{exportsPayload.reconstruction.riggable_base_glb.status}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Detail-prep artifact</dt>
+              <dd>{exportsPayload.reconstruction.detail_prep_artifact.status}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Reconstruction job</dt>
+              <dd>{exportsPayload.reconstruction.reconstruction_job.status}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Base texture artifact</dt>
+              <dd>{exportsPayload.texture_material.base_texture_artifact.status}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Refined texture artifact</dt>
+              <dd>{exportsPayload.texture_material.refined_texture_artifact.status}</dd>
+            </div>
+          </dl>
+        </SectionCard>
+
+        <SectionCard
+          title="LoRA Dataset"
+          description="Phase 20 keeps the training-set contract auditable: accepted images only, visible prompt expansion, and one versioned dataset folder per character."
+        >
+          <LoraDatasetStatus
+            characterPublicId={character.public_id}
+            detail={loraDataset.dataset.detail}
+            promptExpansion={loraDataset.dataset.prompt_expansion}
+            promptHandle={loraDataset.dataset.prompt_handle}
+            status={loraDataset.dataset.status}
+            visibleTags={loraDataset.dataset.visible_tags}
+          />
+          <dl className="keyValueList">
+            <div className="keyValueRow">
+              <dt>Dataset status</dt>
+              <dd>{loraDataset.dataset.status}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Dataset version</dt>
+              <dd>{loraDataset.dataset.dataset_version}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Dataset images</dt>
+              <dd>{loraDataset.dataset.entry_count}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Prompt handle</dt>
+              <dd>{loraDataset.dataset.prompt_handle}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Prompt contract version</dt>
+              <dd>{loraDataset.dataset.prompt_contract_version}</dd>
+            </div>
+          </dl>
+        </SectionCard>
+
+        <SectionCard
+          title="LoRA Training"
+          description="Phase 21 adds the NAS-backed model registry and the truthful local-training gate. If AI Toolkit is missing, the UI says so and keeps the training action disabled."
+        >
+          <LoraTrainingStatus
+            activeModel={
+              loraTraining.active_model
+                ? {
+                    modelName: loraTraining.active_model.model_name,
+                    promptHandle: loraTraining.active_model.prompt_handle,
+                    storagePath: loraTraining.active_model.storage_path
+                  }
+                : null
+            }
+            capabilityDetail={loraTraining.capability.detail}
+            capabilityStatus={loraTraining.capability.status}
+            characterPublicId={character.public_id}
+            datasetStatus={loraDataset.dataset.status}
+            missingRequirements={loraTraining.capability.missing_requirements}
+            registry={loraTraining.registry.map((entry) => ({
+              modelName: entry.model_name,
+              promptHandle: entry.prompt_handle,
+              status: entry.status
+            }))}
+            trainingJobDetail={loraTraining.training_job.detail}
+            trainingJobStatus={loraTraining.training_job.status}
+          />
+          <dl className="keyValueList">
+            <div className="keyValueRow">
+              <dt>Training capability</dt>
+              <dd>{loraTraining.capability.status}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Latest LoRA job</dt>
+              <dd>{loraTraining.training_job.status}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Registry entries</dt>
+              <dd>{loraTraining.registry.length}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Active LoRA</dt>
+              <dd>{loraTraining.active_model?.model_name ?? "none"}</dd>
+            </div>
+            <div className="keyValueRow">
+              <dt>Activation prompt handle</dt>
+              <dd>{loraTraining.active_model?.prompt_handle ?? "none"}</dd>
             </div>
           </dl>
         </SectionCard>

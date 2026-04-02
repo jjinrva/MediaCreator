@@ -1,22 +1,22 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
-from app.schemas.system import GenerationCapabilityResponse, SystemStatusResponse
-from app.services.generation_provider import get_generation_capability
-from app.services.storage_service import resolve_storage_layout
+from app.db.session import get_db_session
+from app.schemas.diagnostics import DiagnosticsResponse
+from app.schemas.system import SystemStatusResponse
+from app.services.diagnostics import get_live_diagnostics_payload
+from app.services.system_runtime import get_system_settings_payload
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 
 
 @router.get("/status", response_model=SystemStatusResponse)
 def read_system_status() -> SystemStatusResponse:
-    storage_layout = resolve_storage_layout()
-    generation_capability = get_generation_capability()
+    return SystemStatusResponse.model_validate(get_system_settings_payload())
 
-    return SystemStatusResponse(
-        application="MediaCreator",
-        service="api",
-        mode="single-user",
-        storage_mode=storage_layout.storage_mode,
-        nas_available=storage_layout.nas_available,
-        generation=GenerationCapabilityResponse.model_validate(generation_capability),
-    )
+
+@router.get("/diagnostics", response_model=DiagnosticsResponse)
+def read_system_diagnostics(
+    db_session: Session = Depends(get_db_session),
+) -> DiagnosticsResponse:
+    return DiagnosticsResponse.model_validate(get_live_diagnostics_payload(db_session))

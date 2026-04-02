@@ -1,0 +1,14 @@
+{
+  "name": "Sit",
+  "slug": "sit",
+  "duration_seconds": 1.3,
+  "source": "local-seeded",
+  "compatible_rig_class": "rigify-human-v1",
+  "recommended_external_source": "Mixamo",
+  "external_import_note": "External humanoid sit clips may be imported later, but the local seed library is sufficient for the app to function.",
+  "action_payload": {
+    "format": "blender-action-payload-v1",
+    "looping": false,
+    "key_pose_sequence": ["stand", "knees-bend", "seat-contact", "seated-idle"]
+  }
+}

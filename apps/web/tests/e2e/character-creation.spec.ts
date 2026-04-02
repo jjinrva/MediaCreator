@@ -99,17 +99,71 @@ test("persisted photoset creates one base character and reloads the detail route
   await expect(page.getByText("No GLB preview is available yet.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Generate preview GLB" }).click();
   await expect(page.getByTestId("glb-preview-viewer")).toBeVisible();
+  await expect(page.getByText("Texture fidelity: base-textured")).toBeVisible();
   await expect(
     page.locator(".keyValueRow").filter({ hasText: "Preview GLB" }).getByText("available")
   ).toBeVisible();
   await expect(
+    page
+      .locator(".keyValueRow")
+      .filter({ hasText: "Preview texture fidelity" })
+      .getByText("base-textured")
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".keyValueRow")
+      .filter({ hasText: "Base texture artifact" })
+      .getByText("available")
+  ).toBeVisible();
+  await expect(
     page.locator(".keyValueRow").filter({ hasText: "Export job" }).getByText("completed")
   ).toBeVisible();
-  await expect(page.getByText("job.completed")).toHaveCount(1);
+  await expect(
+    page
+      .locator(".keyValueRow")
+      .filter({ hasText: "High-detail detail level" })
+      .getByText("riggable-base-only")
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".keyValueRow")
+      .filter({ hasText: "High-detail strategy" })
+      .getByText("smplx-stage1-only")
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".keyValueRow")
+      .filter({ hasText: "Detail-prep artifact" })
+      .getByText("not-ready")
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Run high-detail path" }).click();
+  await expect(
+    page
+      .locator(".keyValueRow")
+      .filter({ hasText: "Reconstruction job" })
+      .getByText("completed")
+  ).toBeVisible();
+  await expect(page.getByText("job.completed")).toHaveCount(2);
   await expect(page.getByText("export.preview_generated")).toHaveCount(1);
+  await expect(page.getByText("reconstruction.completed")).toHaveCount(1);
+  await expect(page.getByText("texture.generated")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "Wardrobe" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Scenes" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Composer" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "LoRA Dataset" })).toBeVisible();
+  await expect(
+    page.locator(".keyValueRow").filter({ hasText: "Prompt handle" }).getByText(/@character_/)
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Build LoRA dataset" }).click();
+  await expect(
+    page.locator(".keyValueRow").filter({ hasText: "Dataset status" }).getByText("available")
+  ).toBeVisible();
+  await expect(page.getByText("lora_dataset.built")).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "LoRA Training" })).toBeVisible();
+  await expect(
+    page.locator(".keyValueRow").filter({ hasText: "Training capability" }).getByText("unavailable")
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Train LoRA locally" })).toBeDisabled();
   await expect(
     page.getByRole("img", { name: "Accepted reference male_body_front.png" })
   ).toBeVisible();
@@ -129,7 +183,35 @@ test("persisted photoset creates one base character and reloads the detail route
   await expect(page.getByText("body.parameter_updated")).toHaveCount(1);
   await expect(page.getByText("pose.parameter_updated")).toHaveCount(4);
   await expect(page.getByText("face.parameter_updated")).toHaveCount(2);
-  await expect(page.getByText("job.completed")).toHaveCount(1);
+  await expect(page.getByText("job.completed")).toHaveCount(2);
   await expect(page.getByText("export.preview_generated")).toHaveCount(1);
+  await expect(page.getByText("reconstruction.completed")).toHaveCount(1);
+  await expect(page.getByText("texture.generated")).toHaveCount(1);
+  await expect(page.getByText("lora_dataset.built")).toHaveCount(1);
+  await expect(
+    page
+      .locator(".keyValueRow")
+      .filter({ hasText: "High-detail detail level" })
+      .getByText("riggable-base-only")
+  ).toBeVisible();
+  await expect(
+    page.locator(".keyValueRow").filter({ hasText: "Dataset status" }).getByText("available")
+  ).toBeVisible();
+  await expect(
+    page.locator(".keyValueRow").filter({ hasText: "Training capability" }).getByText("unavailable")
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Train LoRA locally" })).toBeDisabled();
+  await expect(
+    page
+      .locator(".keyValueRow")
+      .filter({ hasText: "Preview texture fidelity" })
+      .getByText("base-textured")
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".keyValueRow")
+      .filter({ hasText: "Reconstruction job" })
+      .getByText("completed")
+  ).toBeVisible();
   await expect(page.getByTestId("glb-preview-viewer")).toBeVisible();
 });

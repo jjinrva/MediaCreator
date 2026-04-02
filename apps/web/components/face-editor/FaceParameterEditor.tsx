@@ -25,7 +25,7 @@ type FaceParameterEditorProps = {
 };
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://127.0.0.1:8010";
+  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 function formatValue(value: number, unit: string) {
   return `${value.toFixed(2)}${unit}`;

@@ -5,7 +5,13 @@ const NAV_ITEMS = [
   { href: "/", label: "Front door" },
   { href: "/studio", label: "Studio shell" },
   { href: "/studio/capture-guide", label: "Capture guide" },
-  { href: "/studio/characters/new", label: "New character" }
+  { href: "/studio/characters/new", label: "New character" },
+  { href: "/studio/generate", label: "Generate" },
+  { href: "/studio/wardrobe", label: "Wardrobe" },
+  { href: "/studio/motion", label: "Motion" },
+  { href: "/studio/video", label: "Video" },
+  { href: "/studio/settings", label: "Settings" },
+  { href: "/studio/diagnostics", label: "Diagnostics" }
 ];
 
 type StudioFrameProps = {

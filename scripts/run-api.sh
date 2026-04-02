@@ -17,4 +17,4 @@ if [[ ! -x "$API_BIN" ]]; then
 fi
 
 cd "$ROOT_DIR/apps/api"
-exec "$API_BIN" app.main:app --reload --host "${MEDIACREATOR_API_HOST:-127.0.0.1}" --port "${MEDIACREATOR_API_PORT:-8010}"
+exec "$API_BIN" app.main:app --reload --host "${MEDIACREATOR_API_HOST:-0.0.0.0}" --port "${MEDIACREATOR_API_PORT:-8010}"

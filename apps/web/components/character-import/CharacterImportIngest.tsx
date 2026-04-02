@@ -67,7 +67,7 @@ const ACCEPTED_IMAGE_TYPES = {
   "image/webp": [".webp"]
 } as const;
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://127.0.0.1:8010";
+  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
 function buildPhotoId(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`;

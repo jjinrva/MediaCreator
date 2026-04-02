@@ -1,0 +1,90 @@
+{
+  "generated_at": "2026-04-02T15:56:19Z",
+  "overall_status": "pass",
+  "commands": [
+    {
+      "command": "cd /opt/MediaCreator/apps/api && .venv/bin/pytest tests/test_system_runtime_api.py -q",
+      "name": "phase26_api_targeted",
+      "status": "pass"
+    },
+    {
+      "command": "PATH=\"/opt/MediaCreator/infra/bin:$PATH\" pnpm --dir /opt/MediaCreator/apps/web exec vitest run tests/unit/runtime-settings-panel.test.tsx tests/unit/diagnostics-panel.test.tsx",
+      "name": "phase26_web_unit_targeted",
+      "status": "pass"
+    },
+    {
+      "command": "PATH=\"/opt/MediaCreator/infra/bin:$PATH\" PLAYWRIGHT_BROWSERS_PATH=\"/opt/MediaCreator/infra/playwright\" pnpm --dir /opt/MediaCreator/apps/web exec playwright test tests/e2e/settings-diagnostics.spec.ts",
+      "name": "phase26_playwright_targeted",
+      "status": "pass"
+    },
+    {
+      "command": "make test-api",
+      "name": "full_api_suite",
+      "status": "pass"
+    },
+    {
+      "command": "make test-web",
+      "name": "full_web_suite",
+      "status": "pass"
+    },
+    {
+      "command": "make lint",
+      "name": "lint",
+      "status": "pass"
+    },
+    {
+      "command": "make typecheck",
+      "name": "typecheck",
+      "status": "pass"
+    }
+  ],
+  "coverage": [
+    {
+      "area": "settings_page_truth",
+      "evidence": [
+        "/api/v1/system/status",
+        "/studio/settings",
+        "apps/api/tests/test_system_runtime_api.py",
+        "apps/web/tests/unit/runtime-settings-panel.test.tsx",
+        "apps/web/tests/e2e/settings-diagnostics.spec.ts"
+      ],
+      "status": "pass"
+    },
+    {
+      "area": "diagnostics_page_truth",
+      "evidence": [
+        "/api/v1/system/diagnostics",
+        "/studio/diagnostics",
+        "apps/api/tests/test_system_runtime_api.py",
+        "apps/web/tests/unit/diagnostics-panel.test.tsx",
+        "apps/web/tests/e2e/settings-diagnostics.spec.ts"
+      ],
+      "status": "pass"
+    },
+    {
+      "area": "focused_blender_and_generation_checks",
+      "evidence": [
+        "tests/test_blender_export_api.py",
+        "tests/test_video_render_api.py",
+        "tests/test_generation_provider.py",
+        "tests/e2e/video-render.spec.ts",
+        "tests/e2e/generation-workspace.spec.ts"
+      ],
+      "status": "pass"
+    },
+    {
+      "area": "operator_handoff_docs",
+      "evidence": [
+        "README.md",
+        "docs/handoff/operator_runbook.md",
+        "docs/handoff/overnight_acceptance_report.md"
+      ],
+      "status": "pass"
+    }
+  ],
+  "notes": [
+    "Playwright workers are pinned to 1 in apps/web/playwright.config.js so the Next.js dev server does not hit intermittent invalid-hook failures under concurrent browser workers.",
+    "Generation remains truthful: final media generation still depends on a real ComfyUI service plus NAS-backed checkpoint and VAE files.",
+    "Local LoRA training remains truthful: the UI and API report unavailable when AI Toolkit is not installed."
+  ]
+}

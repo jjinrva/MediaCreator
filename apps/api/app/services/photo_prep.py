@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Literal
 
 import cv2
-import mediapipe as mp  # type: ignore[import-untyped]
+import mediapipe as mp
 import numpy as np
-from mediapipe.tasks import python  # type: ignore[import-untyped]
-from mediapipe.tasks.python import vision  # type: ignore[import-untyped]
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session

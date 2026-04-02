@@ -22,8 +22,10 @@ from app.services.jobs import (
     enqueue_job,
     get_system_actor_id,
 )
+from app.services.motion_library import get_character_motion_assignment
 from app.services.pose_state import get_character_pose_state_payload
 from app.services.storage_service import resolve_storage_layout
+from app.services.texture_pipeline import ensure_character_base_texture
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 BLENDER_WORKFLOW_PATH = REPO_ROOT / "workflows" / "blender" / "rigify_proxy_export_v1.json"
@@ -127,12 +129,32 @@ def build_preview_export_job_payload(
     export_root, export_root_class = _resolve_export_root()
     output_root = export_root / "characters" / str(character_public_id)
     output_root.mkdir(parents=True, exist_ok=True)
+    texture_storage_object = ensure_character_base_texture(session, character_public_id)
+    motion_assignment = get_character_motion_assignment(session, character_public_id)
+    motion_duration_seconds = None
+    if motion_assignment is not None:
+        duration_value = motion_assignment.get("duration_seconds")
+        if isinstance(duration_value, int | float):
+            motion_duration_seconds = float(duration_value)
 
     payload = BlenderPreviewExportJobPayload(
         character_public_id=character_public_id,
         input_asset_paths=_input_asset_paths(session, photoset_asset.id),
         body_values=_current_body_values(session, character_public_id),
         pose_values=_current_pose_values(session, character_public_id),
+        motion_clip_name=(
+            str(motion_assignment["motion_name"])
+            if motion_assignment is not None and "motion_name" in motion_assignment
+            else None
+        ),
+        motion_duration_seconds=motion_duration_seconds,
+        motion_payload_path=(
+            str(motion_assignment["action_payload_path"])
+            if motion_assignment is not None and "action_payload_path" in motion_assignment
+            else None
+        ),
+        base_color_texture_path=texture_storage_object.storage_path,
+        texture_fidelity="base-textured",
         output_preview_glb_path=str(output_root / "preview.glb"),
         output_final_glb_path=str(output_root / "final.glb"),
         export_root_class=export_root_class,

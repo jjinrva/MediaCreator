@@ -36,6 +36,7 @@ describe("Phase 17 GLB preview controls", () => {
         detail="No GLB preview is available yet."
         src={null}
         status="not-ready"
+        textureFidelity="untextured"
       />
     );
 
@@ -43,9 +44,10 @@ describe("Phase 17 GLB preview controls", () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://127.0.0.1:8010/api/v1/exports/characters/phase-17-character/preview",
+        "http://10.0.0.102:8010/api/v1/exports/characters/phase-17-character/preview",
         { method: "POST" }
       );
+      expect(screen.getByText("Texture fidelity: untextured")).toBeTruthy();
       expect(refresh).toHaveBeenCalled();
     });
   });

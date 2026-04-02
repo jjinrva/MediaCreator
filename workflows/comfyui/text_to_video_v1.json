@@ -1,0 +1,7 @@
+{
+  "workflow_id": "text_to_video_v1",
+  "version": 1,
+  "purpose": "Baseline ComfyUI text-to-video capability contract placeholder for MediaCreator generation workspace.",
+  "provider": "comfyui",
+  "nodes": []
+}

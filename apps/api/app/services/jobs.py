@@ -37,6 +37,11 @@ class BlenderPreviewExportJobPayload(BaseModel):
     input_asset_paths: list[str]
     body_values: dict[str, float]
     pose_values: dict[str, float]
+    motion_clip_name: str | None = None
+    motion_duration_seconds: float | None = None
+    motion_payload_path: str | None = None
+    base_color_texture_path: str | None
+    texture_fidelity: str
     output_preview_glb_path: str
     output_final_glb_path: str
     export_root_class: str
@@ -44,8 +49,55 @@ class BlenderPreviewExportJobPayload(BaseModel):
     script_path: str
 
 
+class HighDetailReconstructionJobPayload(BaseModel):
+    kind: Literal["high-detail-reconstruction"] = "high-detail-reconstruction"
+    character_public_id: uuid.UUID
+    capture_entry_public_ids: list[uuid.UUID]
+    capture_input_paths: list[str]
+    accepted_entry_count: int
+    reconstruction_strategy: str
+    detail_level_target: str
+    output_detail_prep_path: str
+    output_root_class: str
+
+
+class LoraTrainingJobPayload(BaseModel):
+    kind: Literal["lora-train-ai-toolkit"] = "lora-train-ai-toolkit"
+    character_public_id: uuid.UUID
+    ai_toolkit_bin: str
+    dataset_manifest_path: str
+    output_lora_path: str
+    prompt_handle: str
+    training_config_path: str
+
+
+class VideoRenderJobPayload(BaseModel):
+    kind: Literal["character-motion-video-render"] = "character-motion-video-render"
+    character_public_id: uuid.UUID
+    video_asset_public_id: uuid.UUID
+    motion_asset_public_id: uuid.UUID
+    motion_name: str
+    motion_payload_path: str
+    body_values: dict[str, float]
+    pose_values: dict[str, float]
+    face_values: dict[str, float] | None
+    resolution_width: int
+    resolution_height: int
+    duration_seconds: float
+    fps: int
+    output_video_path: str
+    render_root_class: str
+    workflow_path: str
+    script_path: str
+
+
 JobPayload = Annotated[
-    NoopJobPayload | FailingNoopJobPayload | BlenderPreviewExportJobPayload,
+    NoopJobPayload
+    | FailingNoopJobPayload
+    | BlenderPreviewExportJobPayload
+    | HighDetailReconstructionJobPayload
+    | LoraTrainingJobPayload
+    | VideoRenderJobPayload,
     Field(discriminator="kind"),
 ]
 JOB_PAYLOAD_ADAPTER: TypeAdapter[JobPayload] = TypeAdapter(JobPayload)
@@ -280,6 +332,101 @@ def run_worker_once(
                     job,
                     validated_payload,
                 )
+                complete_job(
+                    session,
+                    actor_id,
+                    job,
+                    output_asset_id=job.output_asset_id,
+                    output_storage_object_id=output_storage_object_id,
+                )
+                return "completed"
+
+            if validated_payload.kind == "high-detail-reconstruction":
+                from app.services.reconstruction import execute_character_reconstruction_job
+
+                advance_job_progress(
+                    session,
+                    actor_id,
+                    job,
+                    step_name="running-high-detail-reconstruction",
+                    progress_percent=75,
+                )
+                output_storage_object_id = execute_character_reconstruction_job(
+                    session,
+                    job,
+                    validated_payload,
+                )
+                complete_job(
+                    session,
+                    actor_id,
+                    job,
+                    output_asset_id=job.output_asset_id,
+                    output_storage_object_id=output_storage_object_id,
+                )
+                return "completed"
+
+            if validated_payload.kind == "lora-train-ai-toolkit":
+                from app.services.lora_training import (
+                    execute_lora_training_job,
+                    mark_lora_training_job_failed,
+                )
+
+                advance_job_progress(
+                    session,
+                    actor_id,
+                    job,
+                    step_name="running-ai-toolkit-training",
+                    progress_percent=75,
+                )
+                try:
+                    output_storage_object_id = execute_lora_training_job(
+                        session,
+                        job,
+                        validated_payload,
+                    )
+                except Exception as exc:
+                    mark_lora_training_job_failed(
+                        session,
+                        character_public_id=validated_payload.character_public_id,
+                        job_public_id=job.public_id,
+                        error_summary=str(exc),
+                    )
+                    fail_job(session, actor_id, job, str(exc))
+                    return "failed"
+
+                complete_job(
+                    session,
+                    actor_id,
+                    job,
+                    output_asset_id=job.output_asset_id,
+                    output_storage_object_id=output_storage_object_id,
+                )
+                return "completed"
+
+            if validated_payload.kind == "character-motion-video-render":
+                from app.services.video_render import (
+                    execute_video_render_job,
+                    mark_video_render_job_failed,
+                )
+
+                advance_job_progress(
+                    session,
+                    actor_id,
+                    job,
+                    step_name="running-controlled-video-render",
+                    progress_percent=75,
+                )
+                try:
+                    output_storage_object_id = execute_video_render_job(
+                        session,
+                        job,
+                        validated_payload,
+                    )
+                except Exception as exc:
+                    mark_video_render_job_failed(session, job, str(exc))
+                    fail_job(session, actor_id, job, str(exc))
+                    return "failed"
+
                 complete_job(
                     session,
                     actor_id,

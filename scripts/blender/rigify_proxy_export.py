@@ -175,6 +175,34 @@ def build_proxy_mesh() -> bpy.types.Object:
     return mesh_obj
 
 
+def apply_base_color_texture(mesh_obj: bpy.types.Object, texture_path: str | None) -> None:
+    if not texture_path:
+        return
+
+    resolved_texture_path = Path(texture_path).resolve()
+    if not resolved_texture_path.exists():
+        return
+
+    bpy.ops.object.select_all(action="DESELECT")
+    mesh_obj.select_set(True)
+    bpy.context.view_layer.objects.active = mesh_obj
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(island_margin=0.02)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    image = bpy.data.images.load(str(resolved_texture_path), check_existing=True)
+    for material in mesh_obj.data.materials:
+        if material is None:
+            continue
+
+        material.use_nodes = True
+        principled = material.node_tree.nodes["Principled BSDF"]
+        image_node = material.node_tree.nodes.new(type="ShaderNodeTexImage")
+        image_node.image = image
+        material.node_tree.links.new(image_node.outputs["Color"], principled.inputs["Base Color"])
+
+
 def _clamp(value: float, min_value: float, max_value: float) -> float:
     return max(min_value, min(max_value, value))
 
@@ -338,10 +366,12 @@ def main() -> None:
     body_values = dict[str, float](payload["body_values"])
     pose_values = dict[str, float](payload["pose_values"])
     output_path = Path(str(payload["output_preview_glb_path"])).resolve()
+    texture_path = str(payload.get("base_color_texture_path") or "")
 
     mesh_obj = build_proxy_mesh()
     add_body_shape_keys(mesh_obj)
     apply_body_values(mesh_obj, body_values)
+    apply_base_color_texture(mesh_obj, texture_path)
     rig_obj = generate_rigify_rig()
     bind_mesh_to_rig(mesh_obj, rig_obj)
     apply_pose_values(rig_obj, pose_values)

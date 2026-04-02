@@ -17,4 +17,4 @@ if [[ ! -x "$PNPM_BIN" ]]; then
 fi
 
 cd "$ROOT_DIR/apps/web"
-exec env PATH="$ROOT_DIR/infra/bin:$PATH" "$PNPM_BIN" dev --hostname "${MEDIACREATOR_WEB_HOST:-127.0.0.1}" --port "${MEDIACREATOR_WEB_PORT:-3000}"
+exec env PATH="$ROOT_DIR/infra/bin:$PATH" "$PNPM_BIN" dev --hostname "${MEDIACREATOR_WEB_HOST:-0.0.0.0}" --port "${MEDIACREATOR_WEB_PORT:-3000}"

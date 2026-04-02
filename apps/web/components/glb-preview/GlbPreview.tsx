@@ -9,12 +9,20 @@ type GlbPreviewProps = {
   detail: string;
   src: string | null;
   status: string;
+  textureFidelity: string;
 };
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://127.0.0.1:8010";
+  process.env.NEXT_PUBLIC_MEDIACREATOR_API_BASE_URL ?? "http://10.0.0.102:8010";
 
-export function GlbPreview({ alt, characterPublicId, detail, src, status }: GlbPreviewProps) {
+export function GlbPreview({
+  alt,
+  characterPublicId,
+  detail,
+  src,
+  status,
+  textureFidelity
+}: GlbPreviewProps) {
   const router = useRouter();
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [actionSummary, setActionSummary] = React.useState<string | null>(null);
@@ -87,6 +95,7 @@ export function GlbPreview({ alt, characterPublicId, detail, src, status }: GlbP
       <div className="thumbnailMeta">
         <strong>Preview status</strong>
         <span className="thumbnailBadge">{status}</span>
+        <span>{`Texture fidelity: ${textureFidelity}`}</span>
         <span>{detail}</span>
         <button
           type="button"

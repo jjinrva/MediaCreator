@@ -4,6 +4,7 @@ from app.models.body_parameters import BodyParameter
 from app.models.facial_parameters import FacialParameter
 from app.models.history_event import HistoryEvent
 from app.models.job import Job
+from app.models.models_registry import ModelRegistry
 from app.models.photoset_entry import PhotosetEntry
 from app.models.pose_state import PoseState
 from app.models.storage_object import StorageObject
@@ -15,6 +16,7 @@ __all__ = [
     "FacialParameter",
     "HistoryEvent",
     "Job",
+    "ModelRegistry",
     "PhotosetEntry",
     "PoseState",
     "StorageObject",

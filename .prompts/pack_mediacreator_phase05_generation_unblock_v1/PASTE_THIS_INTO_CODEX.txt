@@ -1,0 +1,21 @@
+Use the repair pack at:
+
+.prompts/pack_mediacreator_phase05_generation_unblock_v1/
+
+Read in this order:
+
+1. MASTER_RUN.md
+2. support/CURRENT_AUDIT_BASIS.md
+3. reports/GAP_REPORT_SHOULD_VS_ACTUAL.md
+4. reports/PATCH_MATRIX.md
+5. support/CODEX_TRUTH_AND_FAILURE_POLICY.md
+6. support/GENERATION_TRUTH_GATES.md
+7. RUN_ORDER.md
+
+Then execute the build file and the verify file in order.
+Do not claim proof-image success without:
+- a real job kind
+- a real worker branch
+- a real image artifact
+- real storage lineage
+- passing verify evidence

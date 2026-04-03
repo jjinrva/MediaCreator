@@ -31,13 +31,18 @@ type UploadResponse = {
     public_id: string;
     qc_metrics: {
       blur_score: number;
+      blur_ok_for_body: boolean;
+      blur_ok_for_lora: boolean;
       body_detected: boolean;
       body_landmarks_detected: boolean;
       exposure_score: number;
+      exposure_ok_for_body: boolean;
+      exposure_ok_for_lora: boolean;
       face_detected: boolean;
       framing_label: string;
       has_person: boolean;
       occlusion_label: string;
+      person_detected: boolean;
       resolution_ok: boolean;
     };
     qc_reasons: string[];
@@ -95,7 +100,7 @@ class MockXMLHttpRequest {
 
     window.setTimeout(() => {
       this.upload.onload?.(new ProgressEvent("load"));
-      this.status = 201;
+      this.status = 202;
       this.responseText = JSON.stringify(MockXMLHttpRequest.nextResponse);
       this.onload?.();
     }, 10);
@@ -110,6 +115,41 @@ vi.mock("next/navigation", () => ({
 
 function buildUploadResponse(label: string): UploadResponse {
   return {
+    accepted_entry_count: 0,
+    bucket_counts: {
+      body_only: 0,
+      both: 0,
+      lora_only: 0,
+      rejected: 0
+    },
+    character_label: label,
+    entries: [],
+    entry_count: 0,
+    ingest_job: {
+      bucket_counts: {
+        body_only: 0,
+        both: 0,
+        lora_only: 0,
+        rejected: 0
+      },
+      job_public_id: "job-phase-02",
+      processed_files: 0,
+      progress_percent: 0,
+      status: "queued",
+      step_name: "queued",
+      total_files: 1
+    },
+    public_id: "photoset-phase-02",
+    rejected_entry_count: 0,
+    status: "queued"
+  };
+}
+
+function buildPreparedUploadResponse(label: string): UploadResponse {
+  const queuedResponse = buildUploadResponse(label);
+
+  return {
+    ...queuedResponse,
     accepted_entry_count: 1,
     bucket_counts: {
       body_only: 0,
@@ -117,7 +157,6 @@ function buildUploadResponse(label: string): UploadResponse {
       lora_only: 0,
       rejected: 0
     },
-    character_label: label,
     entries: [
       {
         accepted_for_character_use: true,
@@ -132,13 +171,18 @@ function buildUploadResponse(label: string): UploadResponse {
         public_id: "entry-1",
         qc_metrics: {
           blur_score: 144,
+          blur_ok_for_body: true,
+          blur_ok_for_lora: true,
           body_detected: true,
           body_landmarks_detected: true,
           exposure_score: 100,
+          exposure_ok_for_body: true,
+          exposure_ok_for_lora: true,
           face_detected: true,
           framing_label: "full-body",
           has_person: true,
           occlusion_label: "clear",
+          person_detected: true,
           resolution_ok: true
         },
         qc_reasons: [],
@@ -151,21 +195,18 @@ function buildUploadResponse(label: string): UploadResponse {
     ],
     entry_count: 1,
     ingest_job: {
+      ...queuedResponse.ingest_job,
       bucket_counts: {
         body_only: 0,
         both: 1,
         lora_only: 0,
         rejected: 0
       },
-      job_public_id: "job-phase-02",
       processed_files: 1,
       progress_percent: 100,
       status: "completed",
-      step_name: "completed",
-      total_files: 1
+      step_name: "completed"
     },
-    public_id: "photoset-phase-02",
-    rejected_entry_count: 0,
     status: "prepared"
   };
 }
@@ -284,7 +325,7 @@ describe("Phase 02 CharacterImportIngest", () => {
       if (url.endsWith("/api/v1/photosets/photoset-phase-02")) {
         return {
           ok: true,
-          json: async () => buildUploadResponse("Repeat Label")
+          json: async () => buildPreparedUploadResponse("Repeat Label")
         };
       }
 

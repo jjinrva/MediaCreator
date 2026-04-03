@@ -1,5 +1,4 @@
 import shutil
-import tempfile
 import uuid
 from pathlib import Path
 from typing import Literal
@@ -64,7 +63,7 @@ async def _stage_upload(upload: UploadFile, staged_root: Path) -> IncomingPhotoU
     )
 
 
-@router.post("", response_model=PhotosetDetailResponse, status_code=201)
+@router.post("", response_model=PhotosetDetailResponse, status_code=202)
 async def create_photoset(
     request: Request,
     photos: list[UploadFile] = File(...),
@@ -78,7 +77,8 @@ async def create_photoset(
         )
 
     uploads: list[IncomingPhotoUpload] = []
-    staged_root = Path(tempfile.mkdtemp(prefix="mediacreator-intake-"))
+    staged_root = photo_prep.create_upload_staging_root()
+    keep_staged_uploads = False
 
     try:
         for upload in photos:
@@ -89,10 +89,12 @@ async def create_photoset(
                 uploads,
                 character_label=character_label,
             )
+        keep_staged_uploads = True
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
-        shutil.rmtree(staged_root, ignore_errors=True)
+        if not keep_staged_uploads:
+            shutil.rmtree(staged_root, ignore_errors=True)
 
     payload = get_photoset_payload(
         db_session,

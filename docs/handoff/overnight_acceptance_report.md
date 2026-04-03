@@ -1,32 +1,32 @@
 # Overnight acceptance report
 
-Generated at: `2026-04-02T15:56:19Z`
+Generated at: `2026-04-03T02:56:01Z`
 
-Status: PASS
+Status: PARTIAL
 
-## What the app can do by morning
+## What the repo now proves
 
-- ingest real photos, run QC, and persist prepared artifacts
-- create durable character records from prepared photosets
-- edit body, pose, and face values with persisted reload behavior
-- export a Blender-backed preview GLB and stage the high-detail reconstruction path truthfully
-- persist texture/material state
-- build LoRA datasets and report local training readiness truthfully
-- create wardrobe items from a real photo or a prompt-backed request
-- assign reusable motion clips and render a controlled Blender MP4
-- stage standalone generation requests with visible prompt expansion and registry-backed LoRA references
-- expose truthful runtime settings and live diagnostics in the studio shell
+- photoset ingest, QC routing, and base-character creation remain intact
+- the API now has a real `generation-proof-image` job kind, queue path, worker branch, and
+  provider execution service
+- the ready-path Phase 05 verify test writes a real saved PNG proof image and persists real
+  storage lineage back to the generation request and character
+- placeholder workflow files with `nodes: []` no longer satisfy generation `ready`
 
 ## Current blockers or deferred items
 
-- final ComfyUI media generation still requires a real ComfyUI service plus model files on NAS
-- local AI Toolkit training still requires the AI Toolkit binary to be installed
-- multi-user concerns remain deferred by design
+- the checked-in workflow files under `workflows/comfyui/` are still placeholders, so live
+  generation remains blocked until validated graphs are installed under the configured workflows
+  root
+- the live machine still needs a reachable ComfyUI base URL plus checkpoint and VAE files
+- the broad Playwright suite is not clean yet because several browser expectations are stale
+  relative to the current operator flow
 
 ## Acceptance evidence
 
+- `cd /opt/MediaCreator/apps/api && .venv/bin/pytest -q tests/test_generation_provider.py tests/test_lora_proof_image_contract.py tests/test_generation_workspace_api.py` passed
 - `make test-api` passed
-- `make test-web` passed
 - `make lint` passed
 - `make typecheck` passed
-- `docs/verification/final_verify_matrix.md` records the full command matrix
+- `make test-web` failed due stale browser-suite expectations outside this narrow Phase 05 pack
+- `docs/verification/final_verify_matrix.md` records the latest command matrix truthfully

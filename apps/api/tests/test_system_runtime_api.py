@@ -13,6 +13,7 @@ from app.db.session import get_db_session
 from app.main import app
 from app.services.jobs import upsert_service_heartbeat
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -105,9 +106,13 @@ def _configure_runtime(monkeypatch: MonkeyPatch, temp_path: Path) -> Path:
     return nas_root
 
 
-def _create_character(client: TestClient) -> str:
-    photoset_response = client.post(
-        "/api/v1/photosets",
+def _create_character(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> str:
+    _, photoset_payload = upload_photoset_and_complete_ingest(
+        client,
+        session_factory,
         data={"character_label": "Diagnostics character"},
         files=[
             (
@@ -120,11 +125,10 @@ def _create_character(client: TestClient) -> str:
             )
         ],
     )
-    assert photoset_response.status_code == 201
 
     create_response = client.post(
         "/api/v1/characters",
-        json={"photoset_public_id": photoset_response.json()["public_id"]},
+        json={"photoset_public_id": photoset_payload["public_id"]},
     )
     assert create_response.status_code == 201
     return str(create_response.json()["public_id"])
@@ -142,7 +146,7 @@ def test_system_status_and_diagnostics_routes_report_truthful_runtime_state(
 
             try:
                 with TestClient(app) as client:
-                    _create_character(client)
+                    _create_character(client, session_factory)
                     with session_factory() as session, session.begin():
                         upsert_service_heartbeat(
                             session,

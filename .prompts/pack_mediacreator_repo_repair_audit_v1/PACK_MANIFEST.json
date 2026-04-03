@@ -1,0 +1,32 @@
+{
+  "pack_id": "pack_mediacreator_repo_repair_audit_v1",
+  "title": "MediaCreator repo repair pack from audited snapshot",
+  "target_repo_or_app": "MediaCreator",
+  "created_date": "2026-04-03",
+  "author": "OpenAI GPT-5.4 Pro",
+  "audit_basis": {
+    "archive": "MediaCreator-review-slim-20260402-235253.zip",
+    "snapshot_id": "4c95e6c06107c90f35b802b1292b0e200157db26"
+  },
+  "follows": [
+    ".prompts/pack_mediacreator_rebuild_v1/",
+    ".prompts/mediacreator_runtime_repair_pack_v1/",
+    ".prompts/pack_mediacreator_intake_to_saved_3d_and_lora_v1/"
+  ],
+  "ordered_phases": [
+    "phase_01_truth_reset_and_status_alignment",
+    "phase_02_true_async_photoset_ingest_and_progress",
+    "phase_03_qc_acceptance_calibration_and_routing_repairs",
+    "phase_04_saved_3d_output_truth_and_contract_repairs",
+    "phase_05_lora_generation_and_proof_output_repairs",
+    "phase_06_end_to_end_truth_gates_and_final_acceptance"
+  ],
+  "expected_outputs": [
+    "truthful repo status and docs",
+    "real async photoset ingest with worker execution",
+    "calibrated person-first QC with explicit reason codes",
+    "truthful saved 3D output stages",
+    "actual proof-image generation path or explicit blocker state",
+    "deterministic verification reports and blocker reports"
+  ]
+}

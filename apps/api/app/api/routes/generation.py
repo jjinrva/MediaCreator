@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
@@ -13,6 +17,7 @@ from app.schemas.generation import (
     PromptExpansionRequest,
     PromptExpansionResponse,
 )
+from app.services.generation_execution import get_generation_proof_storage_object
 from app.services.prompt_expansion import (
     create_generation_request,
     expand_prompt_text,
@@ -27,9 +32,13 @@ router = APIRouter(prefix="/api/v1/generation", tags=["generation"])
 
 @router.get("", response_model=GenerationWorkspaceResponse)
 def get_generation_workspace(
+    request: Request,
     db_session: Session = Depends(get_db_session),
 ) -> GenerationWorkspaceResponse:
-    payload = get_generation_workspace_payload(db_session)
+    payload = get_generation_workspace_payload(
+        db_session,
+        api_base_url=str(request.base_url).rstrip("/"),
+    )
     return GenerationWorkspaceResponse.model_validate(payload)
 
 
@@ -48,6 +57,7 @@ def expand_prompt(
     status_code=status.HTTP_201_CREATED,
 )
 def create_generation_request_route(
+    request: Request,
     body: CreateGenerationRequestRequest,
     db_session: Session = Depends(get_db_session),
 ) -> GenerationRequestRecordResponse:
@@ -59,6 +69,7 @@ def create_generation_request_route(
                 local_lora_registry_public_id=body.local_lora_registry_public_id,
                 prompt_text=body.prompt_text,
                 target_kind=body.target_kind,
+                api_base_url=str(request.base_url).rstrip("/"),
             )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -88,6 +99,7 @@ def search_external_loras_route(
 
 @router.post("/external-loras/import", response_model=GenerationWorkspaceResponse)
 def import_external_lora_route(
+    request: Request,
     body: ImportExternalLoraRequest,
     db_session: Session = Depends(get_db_session),
 ) -> GenerationWorkspaceResponse:
@@ -107,5 +119,19 @@ def import_external_lora_route(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     db_session.expire_all()
-    payload = get_generation_workspace_payload(db_session)
+    payload = get_generation_workspace_payload(
+        db_session,
+        api_base_url=str(request.base_url).rstrip("/"),
+    )
     return GenerationWorkspaceResponse.model_validate(payload)
+
+
+@router.get("/requests/{request_public_id}/proof-image")
+def get_generation_proof_image(
+    request_public_id: uuid.UUID,
+    db_session: Session = Depends(get_db_session),
+) -> FileResponse:
+    storage_object = get_generation_proof_storage_object(db_session, request_public_id)
+    if storage_object is None or not Path(storage_object.storage_path).exists():
+        raise HTTPException(status_code=404, detail="Generation proof image not found.")
+    return FileResponse(storage_object.storage_path, media_type=storage_object.media_type)

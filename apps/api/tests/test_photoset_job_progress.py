@@ -16,8 +16,9 @@ from app.db.session import get_db_session
 from app.main import app
 from app.models.photoset_entry import PhotosetEntry
 from app.services import photo_prep
-from app.services.jobs import complete_job
+from app.services.jobs import complete_job, run_worker_once
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import queue_photoset_upload
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -61,11 +62,20 @@ def _build_qc_report(
         framing_label="full-body",
         metrics={
             "has_person": face_detected or body_detected,
+            "person_detected": face_detected or body_detected,
             "face_detected": face_detected,
             "body_detected": body_detected,
             "body_landmarks_detected": body_detected,
             "blur_score": 160.0,
+            "blur_ok_for_lora": 160.0 >= photo_prep.MIN_BLUR_FOR_LORA,
+            "blur_ok_for_body": 160.0 >= photo_prep.MIN_BLUR_FOR_BODY,
             "exposure_score": 100.0,
+            "exposure_ok_for_lora": (
+                photo_prep.MIN_EXPOSURE_FOR_LORA <= 100.0 <= photo_prep.MAX_EXPOSURE_FOR_LORA
+            ),
+            "exposure_ok_for_body": (
+                photo_prep.MIN_EXPOSURE_FOR_BODY <= 100.0 <= photo_prep.MAX_EXPOSURE_FOR_BODY
+            ),
             "framing_label": "full-body",
             "occlusion_label": "clear" if face_detected and body_detected else "face_not_visible",
             "resolution_ok": True,
@@ -183,8 +193,8 @@ def test_ingest_job_records_ordered_stage_progress_and_completion_gate(
 
             try:
                 with TestClient(app) as client:
-                    upload_response = client.post(
-                        "/api/v1/photosets",
+                    queued_payload = queue_photoset_upload(
+                        client,
                         data={"character_label": "Progress subject"},
                         files=[
                             (
@@ -197,9 +207,26 @@ def test_ingest_job_records_ordered_stage_progress_and_completion_gate(
                             ),
                         ],
                     )
+                    assert queued_payload["ingest_job"]["status"] == "queued"
+                    assert queued_payload["ingest_job"]["processed_files"] == 0
+                    assert queued_payload["ingest_job"]["bucket_counts"] == {
+                        "lora_only": 0,
+                        "body_only": 0,
+                        "both": 0,
+                        "rejected": 0,
+                    }
 
-                    assert upload_response.status_code == 201
-                    payload = upload_response.json()
+                    job_response = client.get(
+                        f"/api/v1/jobs/{queued_payload['ingest_job']['job_public_id']}"
+                    )
+                    assert job_response.status_code == 200
+                    assert job_response.json()["status"] == "queued"
+
+                    assert run_worker_once(session_factory) == "completed"
+
+                    detail_response = client.get(f"/api/v1/photosets/{queued_payload['public_id']}")
+                    assert detail_response.status_code == 200
+                    payload = detail_response.json()
                     assert payload["ingest_job"]["processed_files"] == 2
                     assert payload["ingest_job"]["bucket_counts"] == {
                         "lora_only": 0,

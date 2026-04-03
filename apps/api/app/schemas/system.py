@@ -16,6 +16,8 @@ class GenerationCapabilityResponse(BaseModel):
     required_workflow_files: list[str]
     discovered_workflow_files: list[str]
     missing_workflow_files: list[str]
+    validated_workflow_files: list[str]
+    invalid_workflow_files: dict[str, list[str]]
     checkpoints_root: Path
     loras_root: Path
     embeddings_root: Path
@@ -23,6 +25,7 @@ class GenerationCapabilityResponse(BaseModel):
     model_roots_on_nas: bool
     checkpoint_files_detected: list[str]
     vae_files_detected: list[str]
+    proof_image_execution_path_available: bool
     missing_requirements: list[str]
 
 

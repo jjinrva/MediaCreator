@@ -13,6 +13,8 @@ from app.main import app
 from app.models.history_event import HistoryEvent
 from app.models.pose_state import PoseState
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
+from tests.test_characters_api import _build_qc_report, _patch_deterministic_qc
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -41,6 +43,17 @@ def _sample_image_bytes(filename: str) -> bytes:
 def test_pose_parameter_updates_persist_and_write_history(
     monkeypatch: MonkeyPatch,
 ) -> None:
+    _patch_deterministic_qc(
+        monkeypatch,
+        [
+            _build_qc_report("pass"),
+            _build_qc_report(
+                "warn",
+                framing_label="head-closeup",
+                reasons=["Portrait crop is LoRA-only."],
+            ),
+        ],
+    )
     with migrated_database("pose_api") as database_url:
         engine, session_factory = _session_factory(database_url)
         app.dependency_overrides[get_db_session] = _override_db_session(session_factory)
@@ -65,8 +78,9 @@ def test_pose_parameter_updates_persist_and_write_history(
 
             try:
                 with TestClient(app) as client:
-                    photoset_response = client.post(
-                        "/api/v1/photosets",
+                    _, photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Phase 15 pose subject"},
                         files=[
                             (
@@ -87,11 +101,10 @@ def test_pose_parameter_updates_persist_and_write_history(
                             ),
                         ],
                     )
-                    assert photoset_response.status_code == 201
 
                     character_response = client.post(
                         "/api/v1/characters",
-                        json={"photoset_public_id": photoset_response.json()["public_id"]},
+                        json={"photoset_public_id": photoset_payload["public_id"]},
                     )
                     assert character_response.status_code == 201
                     character_public_id = character_response.json()["public_id"]

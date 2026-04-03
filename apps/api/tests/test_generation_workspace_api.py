@@ -15,6 +15,8 @@ from app.models.asset import Asset
 from app.models.history_event import HistoryEvent
 from app.services.lora_training import register_lora_model
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
+from tests.test_characters_api import _build_qc_report, _patch_deterministic_qc
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -58,9 +60,13 @@ def _configure_storage(monkeypatch: MonkeyPatch, temp_path: Path) -> None:
     )
 
 
-def _create_character(client: TestClient) -> str:
-    photoset_response = client.post(
-        "/api/v1/photosets",
+def _create_character(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> str:
+    _, photoset_payload = upload_photoset_and_complete_ingest(
+        client,
+        session_factory,
         data={"character_label": "Generation test character"},
         files=[
             (
@@ -73,11 +79,10 @@ def _create_character(client: TestClient) -> str:
             )
         ],
     )
-    assert photoset_response.status_code == 201
 
     create_response = client.post(
         "/api/v1/characters",
-        json={"photoset_public_id": photoset_response.json()["public_id"]},
+        json={"photoset_public_id": photoset_payload["public_id"]},
     )
     assert create_response.status_code == 201
     return str(create_response.json()["public_id"])
@@ -86,6 +91,7 @@ def _create_character(client: TestClient) -> str:
 def test_generation_workspace_expands_prompts_and_stores_local_lora_links(
     monkeypatch: MonkeyPatch,
 ) -> None:
+    _patch_deterministic_qc(monkeypatch, [_build_qc_report("pass")])
     with migrated_database("generation_workspace_api") as database_url:
         engine, session_factory = _session_factory(database_url)
         app.dependency_overrides[get_db_session] = _override_db_session(session_factory)
@@ -96,7 +102,7 @@ def test_generation_workspace_expands_prompts_and_stores_local_lora_links(
 
             try:
                 with TestClient(app) as client:
-                    character_public_id = _create_character(client)
+                    character_public_id = _create_character(client, session_factory)
 
                     with session_factory() as session:
                         with session.begin():

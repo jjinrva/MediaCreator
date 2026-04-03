@@ -1,7 +1,10 @@
+import importlib
+import json
 import os
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -14,6 +17,25 @@ REQUIRED_WORKFLOW_FILES = (
     "text_to_image_v1.json",
     "character_refine_img2img_v1.json",
 )
+REQUIRED_WORKFLOW_NODE_TYPES = {
+    "text_to_image_v1.json": frozenset(
+        {
+            "CheckpointLoaderSimple",
+            "CLIPTextEncode",
+            "KSampler",
+            "VAEDecode",
+            "SaveImage",
+        }
+    ),
+    "character_refine_img2img_v1.json": frozenset(
+        {
+            "LoadImage",
+            "KSampler",
+            "VAEDecode",
+            "SaveImage",
+        }
+    ),
+}
 CHECKPOINT_SUFFIXES = (".ckpt", ".safetensors")
 VAE_SUFFIXES = (".pt", ".ckpt", ".safetensors")
 
@@ -63,6 +85,8 @@ class GenerationCapability(BaseModel):
     required_workflow_files: list[str]
     discovered_workflow_files: list[str]
     missing_workflow_files: list[str]
+    validated_workflow_files: list[str]
+    invalid_workflow_files: dict[str, list[str]]
     checkpoints_root: Path
     loras_root: Path
     embeddings_root: Path
@@ -70,6 +94,7 @@ class GenerationCapability(BaseModel):
     model_roots_on_nas: bool
     checkpoint_files_detected: list[str]
     vae_files_detected: list[str]
+    proof_image_execution_path_available: bool
     missing_requirements: list[str]
 
 
@@ -79,6 +104,75 @@ class LoraActivationResolution(BaseModel):
     prompt_handle: str
     storage_object_public_id: uuid.UUID
     storage_path: str
+
+
+class WorkflowContract(BaseModel):
+    workflow_id: str
+    version: int | None = None
+    provider: str | None = None
+    target_kind: str | None = None
+    purpose: str | None = None
+    nodes: list[dict[str, object]]
+    prompt_api: dict[str, object] | None = None
+
+
+def _workflow_path(workflows_root: Path, workflow_name: str) -> Path:
+    return workflows_root / workflow_name
+
+
+def _load_workflow_payload(workflow_path: Path) -> dict[str, object]:
+    loaded = json.loads(workflow_path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise ValueError(f"Workflow '{workflow_path.name}' did not decode to an object.")
+    return cast(dict[str, object], loaded)
+
+
+def load_workflow_contract(workflow_path: Path) -> WorkflowContract:
+    return WorkflowContract.model_validate(_load_workflow_payload(workflow_path))
+
+
+def workflow_validation_errors(workflow_path: Path) -> list[str]:
+    try:
+        contract = load_workflow_contract(workflow_path)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        return [f"invalid-json:{exc}"]
+    except Exception as exc:
+        return [f"invalid-contract:{exc}"]
+
+    if not contract.nodes:
+        return ["placeholder-nodes-empty"]
+
+    node_types = {
+        class_type
+        for node in contract.nodes
+        if isinstance(node, dict)
+        for class_type in [node.get("class_type")]
+        if isinstance(class_type, str)
+    }
+    if not node_types:
+        return ["workflow-node-types-missing"]
+
+    required_node_types = REQUIRED_WORKFLOW_NODE_TYPES.get(workflow_path.name, frozenset())
+    missing_node_types = sorted(required_node_types.difference(node_types))
+    errors = [f"missing-node-type:{node_type}" for node_type in missing_node_types]
+
+    if contract.prompt_api is None or not contract.prompt_api:
+        errors.append("prompt-api-missing")
+    if contract.provider != "comfyui":
+        errors.append("provider-not-comfyui")
+    if contract.workflow_id != workflow_path.stem:
+        errors.append("workflow-id-mismatch")
+    return errors
+
+
+def proof_image_execution_path_available() -> bool:
+    try:
+        module = importlib.import_module("app.services.generation_execution")
+    except Exception:
+        return False
+    return hasattr(module, "execute_generation_proof_image_job") and hasattr(
+        module, "queue_generation_proof_image"
+    )
 
 
 def get_generation_capability(
@@ -104,6 +198,22 @@ def get_generation_capability(
         for workflow_name in REQUIRED_WORKFLOW_FILES
         if workflow_name not in discovered_workflow_files
     ]
+    invalid_workflow_files = {
+        workflow_name: workflow_validation_errors(_workflow_path(workflows_root, workflow_name))
+        for workflow_name in REQUIRED_WORKFLOW_FILES
+        if workflow_name in discovered_workflow_files
+    }
+    invalid_workflow_files = {
+        workflow_name: errors
+        for workflow_name, errors in invalid_workflow_files.items()
+        if errors
+    }
+    validated_workflow_files = sorted(
+        workflow_name
+        for workflow_name in REQUIRED_WORKFLOW_FILES
+        if workflow_name in discovered_workflow_files
+        and workflow_name not in invalid_workflow_files
+    )
     checkpoint_files = _matching_files(storage_layout.checkpoints_root, CHECKPOINT_SUFFIXES)
     vae_files = _matching_files(storage_layout.vaes_root, VAE_SUFFIXES)
     model_roots = (
@@ -129,12 +239,16 @@ def get_generation_capability(
         missing_requirements.append("workflows_root_missing")
     if missing_workflow_files:
         missing_requirements.append("required_workflows_missing")
+    if invalid_workflow_files:
+        missing_requirements.append("workflow_validation_failed")
     if not model_roots_on_nas:
         missing_requirements.append("model_roots_not_on_nas")
     if not checkpoint_files:
         missing_requirements.append("checkpoint_files_missing")
     if not vae_files:
         missing_requirements.append("vae_files_missing")
+    if not proof_image_execution_path_available():
+        missing_requirements.append("proof_image_execution_path_missing")
 
     if not base_url:
         status = "unavailable"
@@ -152,6 +266,8 @@ def get_generation_capability(
         required_workflow_files=list(REQUIRED_WORKFLOW_FILES),
         discovered_workflow_files=discovered_workflow_files,
         missing_workflow_files=missing_workflow_files,
+        validated_workflow_files=validated_workflow_files,
+        invalid_workflow_files=invalid_workflow_files,
         checkpoints_root=storage_layout.checkpoints_root,
         loras_root=storage_layout.loras_root,
         embeddings_root=storage_layout.embeddings_root,
@@ -159,6 +275,7 @@ def get_generation_capability(
         model_roots_on_nas=model_roots_on_nas,
         checkpoint_files_detected=checkpoint_files,
         vae_files_detected=vae_files,
+        proof_image_execution_path_available=proof_image_execution_path_available(),
         missing_requirements=missing_requirements,
     )
 

@@ -19,6 +19,7 @@ from app.models.photoset_entry import PhotosetEntry
 from app.models.storage_object import StorageObject
 from app.services import photo_prep
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -85,11 +86,24 @@ def _build_qc_report(
         framing_label=framing_label,
         metrics={
             "has_person": face_detected or body_detected,
+            "person_detected": face_detected or body_detected,
             "face_detected": face_detected,
             "body_detected": body_detected,
             "body_landmarks_detected": body_detected,
             "blur_score": blur_score,
+            "blur_ok_for_lora": blur_score >= photo_prep.MIN_BLUR_FOR_LORA,
+            "blur_ok_for_body": blur_score >= photo_prep.MIN_BLUR_FOR_BODY,
             "exposure_score": exposure_score,
+            "exposure_ok_for_lora": (
+                photo_prep.MIN_EXPOSURE_FOR_LORA
+                <= exposure_score
+                <= photo_prep.MAX_EXPOSURE_FOR_LORA
+            ),
+            "exposure_ok_for_body": (
+                photo_prep.MIN_EXPOSURE_FOR_BODY
+                <= exposure_score
+                <= photo_prep.MAX_EXPOSURE_FOR_BODY
+            ),
             "framing_label": framing_label,
             "occlusion_label": occlusion_label,
             "resolution_ok": True,
@@ -168,8 +182,9 @@ def test_photoset_upload_persists_derivatives_and_stable_qc_payload(
 
             try:
                 with TestClient(app) as client:
-                    upload_response = client.post(
-                        "/api/v1/photosets",
+                    _, payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Phase 10 upload"},
                         files=[
                             (
@@ -182,9 +197,6 @@ def test_photoset_upload_persists_derivatives_and_stable_qc_payload(
                             ),
                         ],
                     )
-
-                    assert upload_response.status_code == 201
-                    payload = upload_response.json()
                     assert payload["asset_type"] == "photoset"
                     assert payload["accepted_entry_count"] == 1
                     assert payload["entry_count"] == 2
@@ -243,7 +255,7 @@ def test_photoset_upload_persists_derivatives_and_stable_qc_payload(
                     assert len(photoset_assets) == 1
                     assert len(photo_assets) == 2
                     assert len(entries) == 2
-                    assert len(storage_objects) == 6
+                    assert len(storage_objects) == 10
                     assert [entry.qc_status for entry in entries] == ["pass", "fail"]
                     event_types = [event.event_type for event in history_events]
                     assert event_types.count("photoset.created") == 1

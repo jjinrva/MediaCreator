@@ -11,6 +11,7 @@ from app.models.job import Job
 from app.models.storage_object import StorageObject
 from app.services.jobs import run_worker_once
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 from tests.test_characters_api import (
     _build_qc_report,
     _override_db_session,
@@ -65,8 +66,9 @@ def test_saved_base_glb_is_queued_then_registered_from_a_real_artifact(
 
             try:
                 with TestClient(app) as client:
-                    photoset_response = client.post(
-                        "/api/v1/photosets",
+                    _, photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Phase 04 saved GLB"},
                         files=[
                             (
@@ -87,11 +89,10 @@ def test_saved_base_glb_is_queued_then_registered_from_a_real_artifact(
                             ),
                         ],
                     )
-                    assert photoset_response.status_code == 201
 
                     character_response = client.post(
                         "/api/v1/characters",
-                        json={"photoset_public_id": photoset_response.json()["public_id"]},
+                        json={"photoset_public_id": photoset_payload["public_id"]},
                     )
                     assert character_response.status_code == 201
                     character_public_id = character_response.json()["public_id"]
@@ -195,8 +196,9 @@ def test_high_detail_path_uses_body_qualified_threshold_for_detail_prep(
 
             try:
                 with TestClient(app) as client:
-                    photoset_response = client.post(
-                        "/api/v1/photosets",
+                    _, photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Phase 04 threshold subject"},
                         files=[
                             (
@@ -225,11 +227,10 @@ def test_high_detail_path_uses_body_qualified_threshold_for_detail_prep(
                             ),
                         ],
                     )
-                    assert photoset_response.status_code == 201
 
                     character_response = client.post(
                         "/api/v1/characters",
-                        json={"photoset_public_id": photoset_response.json()["public_id"]},
+                        json={"photoset_public_id": photoset_payload["public_id"]},
                     )
                     assert character_response.status_code == 201
                     character_public_id = character_response.json()["public_id"]

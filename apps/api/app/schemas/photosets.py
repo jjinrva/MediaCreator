@@ -20,11 +20,16 @@ class PhotosetEntryArtifactUrls(BaseModel):
 
 class PhotosetQcMetrics(BaseModel):
     has_person: bool
+    person_detected: bool
     face_detected: bool
     body_detected: bool
     body_landmarks_detected: bool
     blur_score: float
+    blur_ok_for_lora: bool
+    blur_ok_for_body: bool
     exposure_score: float
+    exposure_ok_for_lora: bool
+    exposure_ok_for_body: bool
     framing_label: str
     occlusion_label: str
     resolution_ok: bool

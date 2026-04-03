@@ -19,6 +19,7 @@ from app.models.history_event import HistoryEvent
 from app.models.photoset_entry import PhotosetEntry
 from app.services import photo_prep
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -90,11 +91,24 @@ def _build_qc_report(
         framing_label=framing_label,
         metrics={
             "has_person": face_detected or body_detected,
+            "person_detected": face_detected or body_detected,
             "face_detected": face_detected,
             "body_detected": body_detected,
             "body_landmarks_detected": body_detected,
             "blur_score": blur_score,
+            "blur_ok_for_lora": blur_score >= photo_prep.MIN_BLUR_FOR_LORA,
+            "blur_ok_for_body": blur_score >= photo_prep.MIN_BLUR_FOR_BODY,
             "exposure_score": exposure_score,
+            "exposure_ok_for_lora": (
+                photo_prep.MIN_EXPOSURE_FOR_LORA
+                <= exposure_score
+                <= photo_prep.MAX_EXPOSURE_FOR_LORA
+            ),
+            "exposure_ok_for_body": (
+                photo_prep.MIN_EXPOSURE_FOR_BODY
+                <= exposure_score
+                <= photo_prep.MAX_EXPOSURE_FOR_BODY
+            ),
             "framing_label": framing_label,
             "occlusion_label": occlusion_label,
             "resolution_ok": True,
@@ -203,8 +217,9 @@ def test_label_validation_duplicate_labels_and_reloadable_buckets(
                     assert empty_label_response.status_code == 400
                     assert empty_label_response.json()["detail"] == "Character label is required."
 
-                    upload_response = client.post(
-                        "/api/v1/photosets",
+                    _, payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "  Casey  "},
                         files=[
                             (
@@ -225,9 +240,6 @@ def test_label_validation_duplicate_labels_and_reloadable_buckets(
                             ),
                         ],
                     )
-
-                    assert upload_response.status_code == 201
-                    payload = upload_response.json()
                     assert payload["character_label"] == "Casey"
                     assert payload["bucket_counts"] == {
                         "lora_only": 1,
@@ -246,10 +258,17 @@ def test_label_validation_duplicate_labels_and_reloadable_buckets(
                     assert [
                         entry["accepted_for_character_use"] for entry in payload["entries"]
                     ] == [True, True, True, False]
+                    assert payload["entries"][0]["qc_metrics"]["person_detected"] is True
                     assert payload["entries"][1]["qc_metrics"]["face_detected"] is False
                     assert payload["entries"][1]["qc_metrics"]["body_detected"] is True
+                    assert payload["entries"][1]["qc_metrics"]["person_detected"] is True
                     assert payload["entries"][1]["bucket"] == "body_only"
                     assert payload["entries"][1]["reason_codes"] == ["face_required_for_lora"]
+                    assert payload["entries"][1]["reason_messages"] == [
+                        "Face evidence was not detected for LoRA training."
+                    ]
+                    assert payload["entries"][2]["reason_codes"] == []
+                    assert payload["entries"][3]["qc_metrics"]["person_detected"] is False
                     assert payload["entries"][3]["reason_codes"] == ["no_person_detected"]
 
                     detail_response = client.get(f"/api/v1/photosets/{payload['public_id']}")
@@ -257,8 +276,9 @@ def test_label_validation_duplicate_labels_and_reloadable_buckets(
                     assert detail_response.json() == payload
 
                     _patch_deterministic_qc(monkeypatch, [_build_qc_report("both")])
-                    duplicate_label_response = client.post(
-                        "/api/v1/photosets",
+                    _, duplicate_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Casey"},
                         files=[
                             (
@@ -271,8 +291,7 @@ def test_label_validation_duplicate_labels_and_reloadable_buckets(
                             )
                         ],
                     )
-                    assert duplicate_label_response.status_code == 201
-                    assert duplicate_label_response.json()["character_label"] == "Casey"
+                    assert duplicate_payload["character_label"] == "Casey"
 
                     with session_factory() as session:
                         photosets = session.scalars(
@@ -329,8 +348,9 @@ def test_multifile_upload_and_bounded_ingest_validation(
 
             try:
                 with TestClient(app) as client:
-                    success_response = client.post(
-                        "/api/v1/photosets",
+                    _, success_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Bounded ingest"},
                         files=[
                             (
@@ -351,8 +371,7 @@ def test_multifile_upload_and_bounded_ingest_validation(
                             ),
                         ],
                     )
-                    assert success_response.status_code == 201
-                    assert success_response.json()["entry_count"] == 2
+                    assert success_payload["entry_count"] == 2
 
                     too_many_response = client.post(
                         "/api/v1/photosets",

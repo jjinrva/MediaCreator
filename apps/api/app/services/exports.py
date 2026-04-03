@@ -64,8 +64,8 @@ def _export_job_payload(job: Job | None) -> dict[str, object]:
             "step_name": None,
             "progress_percent": None,
             "detail": (
-                "Phase 12 establishes the export destination only. No Blender export job has "
-                "been queued yet."
+                "Phase 12 establishes the preview/base GLB destination only. No Blender export "
+                "job has been queued yet."
             ),
         }
 
@@ -75,7 +75,9 @@ def _export_job_payload(job: Job | None) -> dict[str, object]:
             "status": job.status,
             "step_name": job.step_name,
             "progress_percent": job.progress_percent,
-            "detail": "Latest Blender preview export job completed successfully.",
+            "detail": (
+                "Latest Blender preview export job wrote the current preview/base GLB artifact."
+            ),
         }
     if job.status == "failed":
         return {
@@ -91,7 +93,7 @@ def _export_job_payload(job: Job | None) -> dict[str, object]:
         "status": job.status,
         "step_name": job.step_name,
         "progress_percent": job.progress_percent,
-        "detail": f"Latest Blender preview export job is {job.status}.",
+        "detail": f"Latest Blender preview/base GLB export job is {job.status}.",
     }
 
 
@@ -103,8 +105,9 @@ def _reconstruction_job_payload(job: Job | None) -> dict[str, object]:
             "step_name": None,
             "progress_percent": None,
             "detail": (
-                "The high-detail path has not run yet. Queue it to generate a riggable base "
-                "summary and evaluate whether the current capture set qualifies for detail prep."
+                "The high-detail path has not run yet. Queue it to generate the riggable "
+                "base/proxy GLB and evaluate whether the current capture set qualifies for a "
+                "detail-prep artifact. No refined mesh is claimed at this stage."
             ),
         }
 
@@ -114,7 +117,11 @@ def _reconstruction_job_payload(job: Job | None) -> dict[str, object]:
             "status": job.status,
             "step_name": job.step_name,
             "progress_percent": job.progress_percent,
-            "detail": "Latest high-detail reconstruction job completed successfully.",
+            "detail": (
+                "Latest high-detail reconstruction job finished the current truthful scope: the "
+                "riggable base/proxy GLB and, when the capture set qualifies, a detail-prep "
+                "artifact. No refined mesh is claimed."
+            ),
         }
     if job.status == "failed":
         return {
@@ -130,7 +137,11 @@ def _reconstruction_job_payload(job: Job | None) -> dict[str, object]:
         "status": job.status,
         "step_name": job.step_name,
         "progress_percent": job.progress_percent,
-        "detail": f"Latest high-detail reconstruction job is {job.status}.",
+        "detail": (
+            "Latest high-detail reconstruction job is "
+            f"{job.status}. This stage tracks the base/proxy GLB and optional detail-prep "
+            "artifact only."
+        ),
     }
 
 
@@ -186,20 +197,20 @@ def _reconstruction_detail(
 ) -> str:
     if detail_level == "riggable-base-plus-detail-prep":
         return (
-            "The riggable base GLB is available and the current capture set qualified for the "
-            "COLMAP-backed detail-prep contract from three or more body-qualified images. "
-            "Phase 18 does not claim a freeform refined mesh yet."
+            "The riggable base/proxy GLB is available and the current capture set qualified for "
+            "the COLMAP-backed detail-prep artifact from three or more body-qualified images. "
+            "No refined mesh artifact is claimed yet."
         )
     if detail_level == "riggable-base-only":
         return (
-            "The riggable base GLB is available, but the current capture set has not produced "
-            "a detail-prep artifact. "
+            "The riggable base/proxy GLB is available, but the current capture set has not "
+            "produced a detail-prep artifact. "
             f"Current body-qualified inputs: {body_qualified_entry_count}. Add broader multi-view "
             f"coverage before expecting the '{strategy}' path to advance beyond the base stage."
         )
     return (
-        "Run the high-detail path to generate the riggable base GLB and evaluate the current "
-        "capture set for a detail-prep artifact."
+        "Run the high-detail path to generate the riggable base/proxy GLB and evaluate the "
+        "current capture set for a detail-prep artifact. No refined mesh is claimed yet."
     )
 
 
@@ -231,10 +242,11 @@ def _reconstruction_payload(
         "strategy": strategy,
         "riggable_base_glb": _artifact_payload(
             api_base_url=api_base_url,
-            available_detail="The riggable base GLB for the high-detail path is available.",
+            available_detail="The riggable base/proxy GLB for the high-detail path is available.",
             character_public_id=character_public_id,
             detail_if_missing=(
-                "No riggable base GLB is available yet. The high-detail path will generate it "
+                "No riggable base/proxy GLB is available yet. The high-detail path will "
+                "generate it "
                 "from the Blender-backed stage-one fit."
             ),
             path_suffix="preview.glb",

@@ -45,12 +45,19 @@ class FailingNoopJobPayload(BaseModel):
 
 
 class PhotosetIngestJobPayload(BaseModel):
+    class StagedUpload(BaseModel):
+        byte_size: int
+        filename: str
+        media_type: str
+        staged_path: str
+
     kind: Literal["photoset-ingest"] = "photoset-ingest"
     character_label: str
+    staged_uploads: list[StagedUpload]
     total_files: int
     processed_files: int = 0
     bucket_counts: dict[str, int] = Field(default_factory=_default_ingest_bucket_counts)
-    photoset_public_id: uuid.UUID | None = None
+    photoset_public_id: uuid.UUID
 
 
 class BlenderPreviewExportJobPayload(BaseModel):
@@ -94,6 +101,19 @@ class LoraTrainingJobPayload(BaseModel):
     training_config_path: str
 
 
+class GenerationProofImageJobPayload(BaseModel):
+    kind: Literal["generation-proof-image"] = "generation-proof-image"
+    generation_request_public_id: uuid.UUID
+    character_public_id: uuid.UUID | None = None
+    local_lora_registry_public_id: uuid.UUID | None = None
+    external_lora_registry_public_id: uuid.UUID | None = None
+    expanded_prompt: str
+    workflow_id: str
+    workflow_path: str
+    output_image_path: str
+    output_root_class: str
+
+
 class VideoRenderJobPayload(BaseModel):
     kind: Literal["character-motion-video-render"] = "character-motion-video-render"
     character_public_id: uuid.UUID
@@ -121,6 +141,7 @@ JobPayload = Annotated[
     | BlenderPreviewExportJobPayload
     | HighDetailReconstructionJobPayload
     | LoraTrainingJobPayload
+    | GenerationProofImageJobPayload
     | VideoRenderJobPayload,
     Field(discriminator="kind"),
 ]
@@ -515,6 +536,12 @@ def run_worker_once(
                 return "missing"
 
             validated_payload = JOB_PAYLOAD_ADAPTER.validate_python(job.payload)
+            if validated_payload.kind == "photoset-ingest":
+                from app.services.photo_prep import execute_photoset_ingest_job
+
+                execute_photoset_ingest_job(session, job, validated_payload)
+                return "failed" if job.status == JobState.FAILED else "completed"
+
             advance_job_progress(
                 session,
                 actor_id,
@@ -601,6 +628,39 @@ def run_worker_once(
                         job_public_id=job.public_id,
                         error_summary=str(exc),
                     )
+                    fail_job(session, actor_id, job, str(exc))
+                    return "failed"
+
+                complete_job(
+                    session,
+                    actor_id,
+                    job,
+                    output_asset_id=job.output_asset_id,
+                    output_storage_object_id=output_storage_object_id,
+                )
+                return "completed"
+
+            if validated_payload.kind == "generation-proof-image":
+                from app.services.generation_execution import (
+                    execute_generation_proof_image_job,
+                    mark_generation_proof_image_job_failed,
+                )
+
+                advance_job_progress(
+                    session,
+                    actor_id,
+                    job,
+                    step_name="running-generation-proof-image",
+                    progress_percent=75,
+                )
+                try:
+                    output_storage_object_id = execute_generation_proof_image_job(
+                        session,
+                        job,
+                        validated_payload,
+                    )
+                except Exception as exc:
+                    mark_generation_proof_image_job_failed(session, job, str(exc))
                     fail_job(session, actor_id, job, str(exc))
                     return "failed"
 

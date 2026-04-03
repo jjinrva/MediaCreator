@@ -1,0 +1,16 @@
+Use the repair pack at:
+
+.prompts/pack_mediacreator_repo_repair_audit_v1/
+
+Read in this order:
+
+1. MASTER_RUN.md
+2. support/CURRENT_AUDIT_BASIS.md
+3. reports/GAP_REPORT_SHOULD_VS_ACTUAL.md
+4. reports/PATCH_MATRIX.md
+5. support/CODEX_TRUTH_AND_FAILURE_POLICY.md
+6. RUN_ORDER.md
+
+Then execute the phases exactly in order.
+Do not skip verify files.
+Do not claim completion without artifact and test proof.

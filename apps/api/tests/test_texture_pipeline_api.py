@@ -14,6 +14,7 @@ from app.models.history_event import HistoryEvent
 from app.models.storage_object import StorageObject
 from app.services.jobs import run_worker_once
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -74,8 +75,9 @@ def test_preview_export_generates_base_texture_artifact_and_embeds_texture_data(
 
             try:
                 with TestClient(app) as client:
-                    photoset_response = client.post(
-                        "/api/v1/photosets",
+                    _, photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Phase 19 textured preview subject"},
                         files=[
                             (
@@ -96,11 +98,10 @@ def test_preview_export_generates_base_texture_artifact_and_embeds_texture_data(
                             ),
                         ],
                     )
-                    assert photoset_response.status_code == 201
 
                     create_response = client.post(
                         "/api/v1/characters",
-                        json={"photoset_public_id": photoset_response.json()["public_id"]},
+                        json={"photoset_public_id": photoset_payload["public_id"]},
                     )
                     assert create_response.status_code == 201
                     character_public_id = create_response.json()["public_id"]

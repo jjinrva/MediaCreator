@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.session import get_db_session
 from app.main import app
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -63,8 +64,9 @@ def test_character_export_route_reports_truthful_not_ready_scaffold(
 
             try:
                 with TestClient(app) as client:
-                    photoset_response = client.post(
-                        "/api/v1/photosets",
+                    _, photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Phase 12 viewer subject"},
                         files=[
                             (
@@ -77,11 +79,10 @@ def test_character_export_route_reports_truthful_not_ready_scaffold(
                             ),
                         ],
                     )
-                    assert photoset_response.status_code == 201
 
                     create_response = client.post(
                         "/api/v1/characters",
-                        json={"photoset_public_id": photoset_response.json()["public_id"]},
+                        json={"photoset_public_id": photoset_payload["public_id"]},
                     )
                     assert create_response.status_code == 201
                     character_public_id = create_response.json()["public_id"]

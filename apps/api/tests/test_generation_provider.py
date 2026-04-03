@@ -77,6 +77,68 @@ def _write_required_workflows(workflows_root: Path) -> None:
         )
 
 
+def _write_validated_workflows(workflows_root: Path) -> None:
+    workflows = {
+        "text_to_image_v1.json": {
+            "workflow_id": "text_to_image_v1",
+            "version": 2,
+            "purpose": "Validated text-to-image proof-image contract.",
+            "provider": "comfyui",
+            "target_kind": "image",
+            "nodes": [
+                {"id": "1", "class_type": "CheckpointLoaderSimple"},
+                {"id": "2", "class_type": "CLIPTextEncode"},
+                {"id": "3", "class_type": "KSampler"},
+                {"id": "4", "class_type": "VAEDecode"},
+                {"id": "5", "class_type": "SaveImage"},
+            ],
+            "prompt_api": {
+                "1": {
+                    "class_type": "CheckpointLoaderSimple",
+                    "inputs": {"ckpt_name": "{{checkpoint_name}}"},
+                },
+                "2": {
+                    "class_type": "CLIPTextEncode",
+                    "inputs": {"text": "{{prompt}}"},
+                },
+                "3": {"class_type": "KSampler", "inputs": {"seed": 1}},
+                "4": {"class_type": "VAEDecode", "inputs": {"vae_name": "{{vae_name}}"}},
+                "5": {
+                    "class_type": "SaveImage",
+                    "inputs": {"filename_prefix": "{{filename_prefix}}"},
+                },
+            },
+        },
+        "character_refine_img2img_v1.json": {
+            "workflow_id": "character_refine_img2img_v1",
+            "version": 2,
+            "purpose": "Validated character refinement proof-image contract.",
+            "provider": "comfyui",
+            "target_kind": "image",
+            "nodes": [
+                {"id": "1", "class_type": "LoadImage"},
+                {"id": "2", "class_type": "KSampler"},
+                {"id": "3", "class_type": "VAEDecode"},
+                {"id": "4", "class_type": "SaveImage"},
+            ],
+            "prompt_api": {
+                "1": {"class_type": "LoadImage", "inputs": {"image": "reference.png"}},
+                "2": {"class_type": "KSampler", "inputs": {"seed": 2}},
+                "3": {"class_type": "VAEDecode", "inputs": {"vae_name": "{{vae_name}}"}},
+                "4": {
+                    "class_type": "SaveImage",
+                    "inputs": {"filename_prefix": "{{filename_prefix}}"},
+                },
+            },
+        },
+    }
+    for workflow_name, payload in workflows.items():
+        (workflows_root / workflow_name).write_text(
+            json.dumps(payload),
+            encoding="utf-8",
+        )
+
+
 def test_system_status_reports_unavailable_when_comfyui_is_absent(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -109,6 +171,27 @@ def test_system_status_reports_unavailable_when_comfyui_is_absent(
             engine.dispose()
 
 
+def test_generation_capability_blocks_placeholder_workflows_even_when_files_exist(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    workflows_root = _configure_generation_env(monkeypatch, tmp_path)
+    _write_required_workflows(workflows_root)
+    checkpoints_root = tmp_path / "nas" / "models" / "checkpoints"
+    vaes_root = tmp_path / "nas" / "models" / "vaes"
+    (checkpoints_root / "sdxl-base.safetensors").write_text("checkpoint", encoding="utf-8")
+    (vaes_root / "sdxl.vae.pt").write_text("vae", encoding="utf-8")
+
+    capability = get_generation_capability(service_ping=lambda _base_url: True)
+
+    assert capability.status == "partially-configured"
+    assert capability.validated_workflow_files == []
+    assert capability.invalid_workflow_files == {
+        "character_refine_img2img_v1.json": ["placeholder-nodes-empty"],
+        "text_to_image_v1.json": ["placeholder-nodes-empty"],
+    }
+    assert "workflow_validation_failed" in capability.missing_requirements
+
+
 def test_system_status_validates_workflows_and_nas_model_roots(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -117,7 +200,7 @@ def test_system_status_validates_workflows_and_nas_model_roots(
         app.dependency_overrides[get_db_session] = _override_db_session(session_factory)
 
         workflows_root = _configure_generation_env(monkeypatch, tmp_path)
-        _write_required_workflows(workflows_root)
+        _write_validated_workflows(workflows_root)
         checkpoints_root = tmp_path / "nas" / "models" / "checkpoints"
         vaes_root = tmp_path / "nas" / "models" / "vaes"
         (checkpoints_root / "sdxl-base.safetensors").write_text("checkpoint", encoding="utf-8")
@@ -136,8 +219,14 @@ def test_system_status_validates_workflows_and_nas_model_roots(
             assert payload["generation"]["status"] == "ready"
             assert payload["generation"]["model_roots_on_nas"] is True
             assert payload["generation"]["missing_workflow_files"] == []
+            assert payload["generation"]["validated_workflow_files"] == [
+                "character_refine_img2img_v1.json",
+                "text_to_image_v1.json",
+            ]
+            assert payload["generation"]["invalid_workflow_files"] == {}
             assert payload["generation"]["checkpoint_files_detected"] == ["sdxl-base.safetensors"]
             assert payload["generation"]["vae_files_detected"] == ["sdxl.vae.pt"]
+            assert payload["generation"]["proof_image_execution_path_available"] is True
             assert payload["generation"]["checkpoints_root"] == str(checkpoints_root)
             assert payload["generation"]["vaes_root"] == str(vaes_root)
             assert payload["generation"]["embeddings_root"] == str(
@@ -153,7 +242,7 @@ def test_generation_capability_reports_partial_state_when_service_is_unreachable
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     workflows_root = _configure_generation_env(monkeypatch, tmp_path)
-    _write_required_workflows(workflows_root)
+    _write_validated_workflows(workflows_root)
     checkpoints_root = tmp_path / "nas" / "models" / "checkpoints"
     vaes_root = tmp_path / "nas" / "models" / "vaes"
     (checkpoints_root / "sdxl-base.safetensors").write_text("checkpoint", encoding="utf-8")

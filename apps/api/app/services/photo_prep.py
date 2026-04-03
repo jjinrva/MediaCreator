@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import mimetypes
+import shutil
 import urllib.request
 import uuid
 from collections.abc import Sequence
@@ -27,12 +28,12 @@ from app.models.job import Job
 from app.models.photoset_entry import PhotosetEntry
 from app.models.storage_object import StorageObject
 from app.services.jobs import (
+    PhotosetIngestJobPayload,
     advance_job_progress,
     complete_job,
     enqueue_job,
     fail_job,
     get_system_actor_id,
-    start_job,
     update_job_payload,
 )
 from app.services.storage_service import StorageLayout, resolve_storage_layout
@@ -47,13 +48,13 @@ POSE_LANDMARKER_URL = (
 )
 ACCEPTED_QC_STATUSES = {"pass", "warn"}
 ALLOWED_IMAGE_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
-MAX_UPLOAD_FILE_COUNT = 32
+MAX_UPLOAD_FILE_COUNT = 5000
 MAX_UPLOAD_FILE_SIZE_BYTES = 20 * 1024 * 1024
 UPLOAD_WRITE_CHUNK_SIZE_BYTES = 1024 * 1024
 MIN_IMAGE_WIDTH = 512
 MIN_IMAGE_HEIGHT = 512
 MIN_BLUR_FOR_LORA = 120.0
-MIN_BLUR_FOR_BODY = 70.0
+MIN_BLUR_FOR_BODY = 55.0
 MIN_EXPOSURE_FOR_LORA = 70.0
 MAX_EXPOSURE_FOR_LORA = 180.0
 MIN_EXPOSURE_FOR_BODY = 45.0
@@ -131,6 +132,12 @@ def resolve_upload_media_type(filename: str, fallback: str | None) -> str:
 
 def extension_for_upload_filename(filename: str, media_type: str) -> str:
     return _extension_for_filename(filename, media_type)
+
+
+def create_upload_staging_root() -> Path:
+    staging_root = resolve_storage_layout().scratch_root / "photoset-staging" / str(uuid.uuid4())
+    staging_root.mkdir(parents=True, exist_ok=True)
+    return staging_root
 
 
 def _asset_query() -> Select[tuple[Asset]]:
@@ -423,6 +430,40 @@ def _occlusion_label(*, face_detected: bool, body_detected: bool) -> str:
     return "unknown"
 
 
+def _qc_metrics(
+    *,
+    body_detected: bool,
+    blur_score: float,
+    exposure_score: float,
+    face_detected: bool,
+    framing_label: str,
+    occlusion_label: str,
+    resolution_ok: bool,
+) -> dict[str, object]:
+    person_detected = face_detected or body_detected
+    blur_ok_for_lora = blur_score >= MIN_BLUR_FOR_LORA
+    blur_ok_for_body = blur_score >= MIN_BLUR_FOR_BODY
+    exposure_ok_for_lora = MIN_EXPOSURE_FOR_LORA <= exposure_score <= MAX_EXPOSURE_FOR_LORA
+    exposure_ok_for_body = MIN_EXPOSURE_FOR_BODY <= exposure_score <= MAX_EXPOSURE_FOR_BODY
+
+    return {
+        "has_person": person_detected,
+        "person_detected": person_detected,
+        "face_detected": face_detected,
+        "body_detected": body_detected,
+        "body_landmarks_detected": body_detected,
+        "blur_score": round(blur_score, 2),
+        "blur_ok_for_lora": blur_ok_for_lora,
+        "blur_ok_for_body": blur_ok_for_body,
+        "exposure_score": round(exposure_score, 2),
+        "exposure_ok_for_lora": exposure_ok_for_lora,
+        "exposure_ok_for_body": exposure_ok_for_body,
+        "framing_label": framing_label,
+        "occlusion_label": occlusion_label,
+        "resolution_ok": resolution_ok,
+    }
+
+
 def _normalized_character_label(character_label: str | None) -> str:
     if character_label is None:
         raise ValueError("Character label is required.")
@@ -488,43 +529,28 @@ def _coerce_qc_report(report: PhotoQcReport) -> PhotoQcReport:
     )
 
 
-def _qc_report(
-    image: Image.Image,
-    face_landmarker: vision.FaceLandmarker,
-    pose_landmarker: vision.PoseLandmarker,
+def _qc_report_from_signals(
+    *,
+    face_detected: bool,
+    body_detected: bool,
+    blur_score: float,
+    exposure_score: float,
+    framing_label: str,
+    resolution_ok: bool,
 ) -> PhotoQcReport:
-    mp_image = _mp_image(image)
-    face_result = face_landmarker.detect(mp_image)
-    pose_result = pose_landmarker.detect(mp_image)
-
-    face_detected = bool(face_result.face_landmarks)
-    body_detected = bool(pose_result.pose_landmarks)
-
-    grayscale = cv2.cvtColor(np.asarray(image, dtype=np.uint8), cv2.COLOR_RGB2GRAY)
-    blur_score = float(cv2.Laplacian(grayscale, cv2.CV_64F).var())
-    exposure_score = float(grayscale.mean())
-    framing_label = _framing_label(
-        body_detected=body_detected,
-        face_detected=face_detected,
-        pose_result=pose_result,
-    )
-    has_person = face_detected or body_detected
-    resolution_ok = image.width >= MIN_IMAGE_WIDTH and image.height >= MIN_IMAGE_HEIGHT
     occlusion_label = _occlusion_label(face_detected=face_detected, body_detected=body_detected)
+    metrics = _qc_metrics(
+        body_detected=body_detected,
+        blur_score=blur_score,
+        exposure_score=exposure_score,
+        face_detected=face_detected,
+        framing_label=framing_label,
+        occlusion_label=occlusion_label,
+        resolution_ok=resolution_ok,
+    )
+    person_detected = bool(metrics["person_detected"])
 
-    metrics = {
-        "has_person": has_person,
-        "face_detected": face_detected,
-        "body_detected": body_detected,
-        "body_landmarks_detected": body_detected,
-        "blur_score": round(blur_score, 2),
-        "exposure_score": round(exposure_score, 2),
-        "framing_label": framing_label,
-        "occlusion_label": occlusion_label,
-        "resolution_ok": resolution_ok,
-    }
-
-    if not has_person:
+    if not person_detected:
         return PhotoQcReport(
             framing_label=framing_label,
             metrics=metrics,
@@ -560,7 +586,7 @@ def _qc_report(
             ("body_evidence_missing", "Body evidence is too weak for body modeling.")
         )
 
-    if blur_score < MIN_BLUR_FOR_LORA:
+    if not bool(metrics["blur_ok_for_lora"]):
         lora_failures.append(
             ("blur_below_lora_threshold", "Image is too blurry for LoRA training.")
         )
@@ -568,15 +594,17 @@ def _qc_report(
         warning_codes.append("lora_blur_borderline")
         warning_messages.append("Image sharpness is borderline for LoRA training.")
 
-    if blur_score < MIN_BLUR_FOR_BODY:
+    if not bool(metrics["blur_ok_for_body"]):
         body_failures.append(
             ("blur_below_body_threshold", "Image is too blurry for body modeling.")
         )
-    elif blur_score < (MIN_BLUR_FOR_BODY + 20):
+    elif blur_score < (MIN_BLUR_FOR_BODY + 15):
         warning_codes.append("body_blur_borderline")
-        warning_messages.append("Image sharpness is borderline for body modeling.")
+        warning_messages.append(
+            "Image sharpness is borderline but still acceptable for body modeling."
+        )
 
-    if exposure_score < MIN_EXPOSURE_FOR_LORA or exposure_score > MAX_EXPOSURE_FOR_LORA:
+    if not bool(metrics["exposure_ok_for_lora"]):
         lora_failures.append(
             ("exposure_out_of_lora_range", "Exposure is outside the LoRA training range.")
         )
@@ -587,7 +615,7 @@ def _qc_report(
         warning_codes.append("lora_exposure_borderline")
         warning_messages.append("Exposure is borderline for LoRA training.")
 
-    if exposure_score < MIN_EXPOSURE_FOR_BODY or exposure_score > MAX_EXPOSURE_FOR_BODY:
+    if not bool(metrics["exposure_ok_for_body"]):
         body_failures.append(
             ("exposure_out_of_body_range", "Exposure is outside the body modeling range.")
         )
@@ -596,9 +624,11 @@ def _qc_report(
         or exposure_score > (MAX_EXPOSURE_FOR_BODY - 10)
     ):
         warning_codes.append("body_exposure_borderline")
-        warning_messages.append("Exposure is borderline for body modeling.")
+        warning_messages.append(
+            "Exposure is borderline but still acceptable for body modeling."
+        )
 
-    if framing_label == "head-closeup":
+    if body_detected and framing_label == "head-closeup":
         body_failures.append(
             ("body_framing_insufficient", "Framing is too tight for body modeling.")
         )
@@ -638,6 +668,37 @@ def _qc_report(
     )
 
 
+def _qc_report(
+    image: Image.Image,
+    face_landmarker: vision.FaceLandmarker,
+    pose_landmarker: vision.PoseLandmarker,
+) -> PhotoQcReport:
+    mp_image = _mp_image(image)
+    face_result = face_landmarker.detect(mp_image)
+    pose_result = pose_landmarker.detect(mp_image)
+
+    face_detected = bool(face_result.face_landmarks)
+    body_detected = bool(pose_result.pose_landmarks)
+
+    grayscale = cv2.cvtColor(np.asarray(image, dtype=np.uint8), cv2.COLOR_RGB2GRAY)
+    blur_score = float(cv2.Laplacian(grayscale, cv2.CV_64F).var())
+    exposure_score = float(grayscale.mean())
+    framing_label = _framing_label(
+        body_detected=body_detected,
+        face_detected=face_detected,
+        pose_result=pose_result,
+    )
+    resolution_ok = image.width >= MIN_IMAGE_WIDTH and image.height >= MIN_IMAGE_HEIGHT
+    return _qc_report_from_signals(
+        face_detected=face_detected,
+        body_detected=body_detected,
+        blur_score=blur_score,
+        exposure_score=exposure_score,
+        framing_label=framing_label,
+        resolution_ok=resolution_ok,
+    )
+
+
 def _media_type_for_filename(filename: str, fallback: str | None) -> str:
     guessed_media_type, _ = mimetypes.guess_type(filename)
     return fallback or guessed_media_type or "application/octet-stream"
@@ -669,7 +730,80 @@ def ingest_photoset(
         raise ValueError(f"A photoset may contain at most {MAX_UPLOAD_FILE_COUNT} files.")
 
     normalized_label = _normalized_character_label(character_label)
+    actor_id = get_system_actor_id(session)
+    photoset_asset = Asset(
+        asset_type="photoset",
+        status="queued",
+        created_by_actor_id=actor_id,
+        current_owner_actor_id=actor_id,
+    )
+    session.add(photoset_asset)
+    session.flush()
+    ingest_job = enqueue_job(
+        session,
+        actor_id,
+        {
+            "kind": "photoset-ingest",
+            "character_label": normalized_label,
+            "staged_uploads": [
+                {
+                    "byte_size": upload.byte_size,
+                    "filename": upload.filename,
+                    "media_type": _media_type_for_filename(upload.filename, upload.media_type),
+                    "staged_path": str(upload.staged_path),
+                }
+                for upload in uploads
+            ],
+            "total_files": len(uploads),
+            "processed_files": 0,
+            "bucket_counts": _default_bucket_counts(),
+            "photoset_public_id": photoset_asset.public_id,
+        },
+        output_asset_id=photoset_asset.id,
+    )
+    _history_event(
+        session,
+        actor_id,
+        asset_id=photoset_asset.id,
+        details={
+            "character_label": normalized_label,
+            "entry_count": len(uploads),
+            "ingest_job_public_id": str(ingest_job.public_id),
+            "status": "queued",
+        },
+        event_type="photoset.created",
+    )
+    return PhotosetIngestResult(
+        ingest_job=ingest_job,
+        photoset_asset=photoset_asset,
+    )
 
+
+def _cleanup_staged_uploads(uploads: Sequence[IncomingPhotoUpload]) -> None:
+    for staged_root in {upload.staged_path.parent for upload in uploads}:
+        shutil.rmtree(staged_root, ignore_errors=True)
+
+
+def _uploads_from_job_payload(payload: PhotosetIngestJobPayload) -> list[IncomingPhotoUpload]:
+    return [
+        IncomingPhotoUpload(
+            byte_size=staged_upload.byte_size,
+            filename=staged_upload.filename,
+            media_type=staged_upload.media_type,
+            staged_path=Path(staged_upload.staged_path),
+        )
+        for staged_upload in payload.staged_uploads
+    ]
+
+
+def _run_photoset_ingest_pipeline(
+    session: Session,
+    *,
+    photoset_asset: Asset,
+    ingest_job: Job,
+    normalized_label: str,
+    uploads: Sequence[IncomingPhotoUpload],
+) -> None:
     actor_id = get_system_actor_id(session)
     layout = resolve_storage_layout()
     roots = _resolve_photo_roots(layout)
@@ -681,52 +815,25 @@ def ingest_photoset(
     )
     face_landmarker = _create_face_landmarker(face_model_path)
     pose_landmarker = _create_pose_landmarker(pose_model_path)
-    photoset_asset: Asset | None = None
-    ingest_job: Job | None = None
     bucket_counts = _default_bucket_counts()
     derivative_manifest_entries: list[dict[str, object]] = []
     lora_manifest_entries: list[dict[str, object]] = []
 
     try:
-        photoset_asset = Asset(
-            asset_type="photoset",
-            status="ingesting",
-            created_by_actor_id=actor_id,
-            current_owner_actor_id=actor_id,
-        )
-        session.add(photoset_asset)
+        photoset_asset.status = "ingesting"
         session.flush()
-        ingest_job = enqueue_job(
-            session,
-            actor_id,
-            {
-                "kind": "photoset-ingest",
-                "character_label": normalized_label,
-                "total_files": len(uploads),
-                "processed_files": 0,
-                "bucket_counts": dict(bucket_counts),
-                "photoset_public_id": photoset_asset.public_id,
-            },
-            output_asset_id=photoset_asset.id,
-        )
-        start_job(
+        advance_job_progress(
             session,
             actor_id,
             ingest_job,
             step_name="upload_received",
-            progress_percent=1,
+            progress_percent=12,
         )
-        _history_event(
+        update_job_payload(
             session,
-            actor_id,
-            asset_id=photoset_asset.id,
-            details={
-                "character_label": normalized_label,
-                "entry_count": len(uploads),
-                "ingest_job_public_id": str(ingest_job.public_id),
-                "status": "ingesting",
-            },
-            event_type="photoset.created",
+            ingest_job,
+            processed_files=0,
+            bucket_counts=dict(bucket_counts),
         )
 
         for ordinal, upload in enumerate(uploads):
@@ -743,7 +850,7 @@ def ingest_photoset(
                 progress_percent=_job_progress_percent(
                     processed_files=ordinal,
                     total_files=len(uploads),
-                    stage_offset=5,
+                    stage_offset=15,
                 ),
             )
 
@@ -782,6 +889,7 @@ def ingest_photoset(
                 normalized_image = _normalized_image(original_bytes)
             except UnidentifiedImageError as exc:  # pragma: no cover - exercised via API
                 raise ValueError(f"Unsupported image upload: {upload.filename}") from exc
+
             advance_job_progress(
                 session,
                 actor_id,
@@ -790,7 +898,7 @@ def ingest_photoset(
                 progress_percent=_job_progress_percent(
                     processed_files=ordinal,
                     total_files=len(uploads),
-                    stage_offset=10,
+                    stage_offset=20,
                 ),
             )
 
@@ -804,12 +912,14 @@ def ingest_photoset(
                 progress_percent=_job_progress_percent(
                     processed_files=ordinal,
                     total_files=len(uploads),
-                    stage_offset=15,
+                    stage_offset=25,
                 ),
             )
             qc_report = _coerce_qc_report(
                 _qc_report(normalized_image, face_landmarker, pose_landmarker)
             )
+            photoset_asset.status = "classifying"
+            session.flush()
             advance_job_progress(
                 session,
                 actor_id,
@@ -818,7 +928,7 @@ def ingest_photoset(
                 progress_percent=_job_progress_percent(
                     processed_files=ordinal,
                     total_files=len(uploads),
-                    stage_offset=20,
+                    stage_offset=30,
                 ),
             )
 
@@ -893,7 +1003,7 @@ def ingest_photoset(
                 progress_percent=_job_progress_percent(
                     processed_files=ordinal,
                     total_files=len(uploads),
-                    stage_offset=25,
+                    stage_offset=35,
                 ),
             )
 
@@ -1095,6 +1205,12 @@ def ingest_photoset(
             event_type="photoset.lora_manifested",
         )
 
+        persisted_entries = session.execute(
+            _photoset_entry_query().where(PhotosetEntry.photoset_asset_id == photoset_asset.id)
+        ).scalars().all()
+        if len(persisted_entries) != len(uploads):
+            raise RuntimeError("Photoset ingest cannot complete before all entries are persisted.")
+
         photoset_asset.status = "prepared"
         session.flush()
         advance_job_progress(
@@ -1125,25 +1241,37 @@ def ingest_photoset(
             },
             event_type="photoset.prepared",
         )
-        return PhotosetIngestResult(
-            ingest_job=ingest_job,
+    finally:
+        face_landmarker.close()
+        pose_landmarker.close()
+
+
+def execute_photoset_ingest_job(
+    session: Session,
+    job: Job,
+    payload: PhotosetIngestJobPayload,
+) -> None:
+    actor_id = get_system_actor_id(session)
+    photoset_asset = get_photoset_asset(session, payload.photoset_public_id)
+    uploads = _uploads_from_job_payload(payload)
+
+    try:
+        if photoset_asset is None:
+            raise LookupError("Photoset not found for queued ingest job.")
+        _run_photoset_ingest_pipeline(
+            session,
             photoset_asset=photoset_asset,
+            ingest_job=job,
+            normalized_label=payload.character_label,
+            uploads=uploads,
         )
     except Exception as exc:
         if photoset_asset is not None:
             photoset_asset.status = "failed"
-        if ingest_job is not None:
-            update_job_payload(
-                session,
-                ingest_job,
-                processed_files=sum(bucket_counts.values()),
-                bucket_counts=dict(bucket_counts),
-            )
-            fail_job(session, actor_id, ingest_job, str(exc))
-        raise
+            session.flush()
+        fail_job(session, actor_id, job, str(exc))
     finally:
-        face_landmarker.close()
-        pose_landmarker.close()
+        _cleanup_staged_uploads(uploads)
 
 
 def _photoset_entry_query() -> Select[tuple[PhotosetEntry]]:

@@ -19,6 +19,19 @@ type ReconstructionStatusProps = {
   strategy: string;
 };
 
+function describeDetailLevel(detailLevel: string): string {
+  switch (detailLevel) {
+    case "riggable-base-plus-detail-prep":
+      return "base/proxy GLB plus detail-prep artifact; no refined mesh artifact";
+    case "riggable-base-only":
+      return "base/proxy GLB only; no detail-prep artifact; no refined mesh artifact";
+    case "refined-mesh-available":
+      return "refined mesh artifact available";
+    default:
+      return "no saved 3D artifact yet";
+  }
+}
+
 
 export function ReconstructionStatus({
   characterPublicId,
@@ -92,6 +105,7 @@ export function ReconstructionStatus({
       <div className="thumbnailMeta">
         <strong>High-detail path</strong>
         <span className="thumbnailBadge">{detailLevel}</span>
+        <span>{`Current saved 3D stage: ${describeDetailLevel(detailLevel)}`}</span>
         <span>{detail}</span>
         <span>{`Strategy: ${strategy}`}</span>
         <button

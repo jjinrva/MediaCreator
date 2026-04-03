@@ -11,6 +11,7 @@ from app.main import app
 from app.models.asset import Asset
 from app.models.history_event import HistoryEvent
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 from tests.test_characters_api import (
     _build_qc_report,
     _override_db_session,
@@ -75,8 +76,9 @@ def test_character_creation_is_acceptance_gated_and_preserves_bucket_lineage(
 
             try:
                 with TestClient(app) as client:
-                    first_photoset = client.post(
-                        "/api/v1/photosets",
+                    _, first_photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Repeat label"},
                         files=[
                             (
@@ -105,8 +107,6 @@ def test_character_creation_is_acceptance_gated_and_preserves_bucket_lineage(
                             ),
                         ],
                     )
-                    assert first_photoset.status_code == 201
-                    first_photoset_payload = first_photoset.json()
 
                     first_character = client.post(
                         "/api/v1/characters",
@@ -132,8 +132,9 @@ def test_character_creation_is_acceptance_gated_and_preserves_bucket_lineage(
                         for entry in first_character_payload["accepted_entries"]
                     )
 
-                    second_photoset = client.post(
-                        "/api/v1/photosets",
+                    _, second_photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Repeat label"},
                         files=[
                             (
@@ -146,11 +147,10 @@ def test_character_creation_is_acceptance_gated_and_preserves_bucket_lineage(
                             )
                         ],
                     )
-                    assert second_photoset.status_code == 201
 
                     second_character = client.post(
                         "/api/v1/characters",
-                        json={"photoset_public_id": second_photoset.json()["public_id"]},
+                        json={"photoset_public_id": second_photoset_payload["public_id"]},
                     )
                     assert second_character.status_code == 201
                     second_character_payload = second_character.json()
@@ -227,8 +227,9 @@ def test_character_creation_fails_when_all_images_are_rejected(
 
             try:
                 with TestClient(app) as client:
-                    photoset_response = client.post(
-                        "/api/v1/photosets",
+                    _, photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Rejected character"},
                         files=[
                             (
@@ -249,12 +250,11 @@ def test_character_creation_fails_when_all_images_are_rejected(
                             ),
                         ],
                     )
-                    assert photoset_response.status_code == 201
-                    assert photoset_response.json()["accepted_entry_count"] == 0
+                    assert photoset_payload["accepted_entry_count"] == 0
 
                     create_response = client.post(
                         "/api/v1/characters",
-                        json={"photoset_public_id": photoset_response.json()["public_id"]},
+                        json={"photoset_public_id": photoset_payload["public_id"]},
                     )
 
                     assert create_response.status_code == 400

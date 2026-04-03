@@ -19,6 +19,7 @@ from app.models.photoset_entry import PhotosetEntry
 from app.models.storage_object import StorageObject
 from app.services import photo_prep
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -87,11 +88,20 @@ def _build_qc_report(
         framing_label=framing_label,
         metrics={
             "has_person": face_detected or body_detected,
+            "person_detected": face_detected or body_detected,
             "face_detected": face_detected,
             "body_detected": body_detected,
             "body_landmarks_detected": body_detected,
             "blur_score": 145.0,
+            "blur_ok_for_lora": 145.0 >= photo_prep.MIN_BLUR_FOR_LORA,
+            "blur_ok_for_body": 145.0 >= photo_prep.MIN_BLUR_FOR_BODY,
             "exposure_score": 100.0,
+            "exposure_ok_for_lora": (
+                photo_prep.MIN_EXPOSURE_FOR_LORA <= 100.0 <= photo_prep.MAX_EXPOSURE_FOR_LORA
+            ),
+            "exposure_ok_for_body": (
+                photo_prep.MIN_EXPOSURE_FOR_BODY <= 100.0 <= photo_prep.MAX_EXPOSURE_FOR_BODY
+            ),
             "framing_label": framing_label,
             "occlusion_label": "clear" if face_detected and body_detected else "face_not_visible",
             "resolution_ok": True,
@@ -220,8 +230,9 @@ def test_ingest_writes_bucket_bound_derivatives_and_explicit_manifests(
 
             try:
                 with TestClient(app) as client:
-                    response = client.post(
-                        "/api/v1/photosets",
+                    _, payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Derivative Subject"},
                         files=[
                             ("photos", ("body.png", upload_map["body.png"], "image/png")),
@@ -230,9 +241,6 @@ def test_ingest_writes_bucket_bound_derivatives_and_explicit_manifests(
                             ("photos", ("reject.png", upload_map["reject.png"], "image/png")),
                         ],
                     )
-
-                    assert response.status_code == 201
-                    payload = response.json()
                     assert payload["bucket_counts"] == {
                         "body_only": 1,
                         "both": 1,

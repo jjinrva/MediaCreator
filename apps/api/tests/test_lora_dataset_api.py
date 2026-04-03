@@ -14,6 +14,7 @@ from app.main import app
 from app.models.history_event import HistoryEvent
 from app.models.storage_object import StorageObject
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 from tests.test_photo_derivatives_and_manifests import (
     _build_qc_report,
     _patch_derivative_artifacts,
@@ -88,8 +89,9 @@ def test_lora_dataset_route_writes_dataset_files_manifest_and_prompt_contract(
 
             try:
                 with TestClient(app) as client:
-                    photoset_response = client.post(
-                        "/api/v1/photosets",
+                    _, photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Phase 20 dataset subject"},
                         files=[
                             (
@@ -110,11 +112,10 @@ def test_lora_dataset_route_writes_dataset_files_manifest_and_prompt_contract(
                             ),
                         ],
                     )
-                    assert photoset_response.status_code == 201
 
                     create_response = client.post(
                         "/api/v1/characters",
-                        json={"photoset_public_id": photoset_response.json()["public_id"]},
+                        json={"photoset_public_id": photoset_payload["public_id"]},
                     )
                     assert create_response.status_code == 201
                     character_public_id = create_response.json()["public_id"]

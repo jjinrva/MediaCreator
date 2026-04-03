@@ -38,13 +38,18 @@ type PersistedPhotosetEntry = {
   public_id: string;
   qc_metrics: {
     blur_score: number;
+    blur_ok_for_body: boolean;
+    blur_ok_for_lora: boolean;
     body_detected: boolean;
     body_landmarks_detected: boolean;
     exposure_score: number;
+    exposure_ok_for_body: boolean;
+    exposure_ok_for_lora: boolean;
     face_detected: boolean;
     framing_label: string;
     has_person: boolean;
     occlusion_label: string;
+    person_detected: boolean;
     resolution_ok: boolean;
   };
   qc_reasons: string[];
@@ -226,6 +231,12 @@ function bucketBadgeClassName(bucket: BucketName) {
 }
 
 function buildSubmissionSummary(photoset: PersistedPhotoset) {
+  if (photoset.ingest_job && photoset.ingest_job.status !== "completed") {
+    const processedFiles = photoset.ingest_job.processed_files ?? 0;
+    const totalFiles = photoset.ingest_job.total_files ?? photoset.entry_count;
+    return `Queued for backend ingest • ${processedFiles}/${totalFiles} processed`;
+  }
+
   return [
     `${photoset.accepted_entry_count} accepted`,
     `${photoset.rejected_entry_count} rejected`,
@@ -441,6 +452,7 @@ export function CharacterImportIngest() {
 
     const payload = (await response.json()) as PersistedPhotoset;
     setPersistedPhotoset(payload);
+    setSubmissionSummary(buildSubmissionSummary(payload));
     if (payload.character_label) {
       setCharacterLabel(payload.character_label);
     }
@@ -477,6 +489,7 @@ export function CharacterImportIngest() {
 
         setPersistedPhotoset(payload);
         setIngestJob(payload.ingest_job ? jobSummaryToDetail(payload.ingest_job) : null);
+        setSubmissionSummary(buildSubmissionSummary(payload));
         if (payload.character_label) {
           setCharacterLabel(payload.character_label);
         }

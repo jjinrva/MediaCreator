@@ -40,7 +40,25 @@ class GenerationModelReferenceResponse(BaseModel):
     toolkit_name: str | None
 
 
+class GenerationProofImageJobResponse(BaseModel):
+    detail: str
+    job_public_id: uuid.UUID | None
+    progress_percent: int | None
+    status: str
+    step_name: str | None
+
+
+class GenerationProofImageArtifactResponse(BaseModel):
+    byte_size: int | None
+    media_type: str | None
+    proof_asset_public_id: uuid.UUID
+    status: str
+    storage_object_public_id: uuid.UUID
+    url: str | None
+
+
 class GenerationRequestRecordResponse(BaseModel):
+    character_public_id: uuid.UUID | None
     created_at: datetime
     expanded_prompt: str
     external_lora: GenerationModelReferenceResponse | None
@@ -48,6 +66,8 @@ class GenerationRequestRecordResponse(BaseModel):
     matched_handles: list[str]
     provider_status: str
     public_id: uuid.UUID
+    proof_image_artifact: GenerationProofImageArtifactResponse | None
+    proof_image_job: GenerationProofImageJobResponse
     raw_prompt: str
     status: str
     target_kind: str

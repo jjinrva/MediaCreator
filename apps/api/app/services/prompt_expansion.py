@@ -18,7 +18,12 @@ from app.models.asset import Asset
 from app.models.history_event import HistoryEvent
 from app.models.models_registry import ModelRegistry
 from app.models.storage_object import StorageObject
-from app.services.characters import get_character_payload
+from app.services.characters import get_character_asset, get_character_payload
+from app.services.generation_execution import (
+    get_generation_proof_job,
+    get_generation_proof_storage_object,
+    queue_generation_proof_image,
+)
 from app.services.generation_provider import get_generation_capability
 from app.services.jobs import get_system_actor_id
 from app.services.lora_dataset import get_character_lora_dataset_payload
@@ -469,10 +474,53 @@ def _validate_external_lora_entry(
     return _registry_payload(session, entry, source="external")
 
 
-def _request_workflow(target_kind: str) -> tuple[str, Path]:
+def _uuid_from_value(value: object) -> uuid.UUID | None:
+    if isinstance(value, uuid.UUID):
+        return value
+    if isinstance(value, str):
+        try:
+            return uuid.UUID(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _resolve_request_character_asset(
+    session: Session,
+    *,
+    local_lora: dict[str, object] | None,
+    matched_handles: list[str],
+) -> Asset | None:
+    if local_lora is not None:
+        local_character_public_id = _uuid_from_value(local_lora.get("character_public_id"))
+        if local_character_public_id is not None:
+            character_asset = get_character_asset(session, local_character_public_id)
+            if character_asset is not None:
+                return character_asset
+
+    matched_handle_set = set(matched_handles)
+    for recipe in _character_prompt_recipes(session):
+        recipe_handle = recipe.get("prompt_handle")
+        recipe_public_id = recipe.get("public_id")
+        if recipe_handle not in matched_handle_set:
+            continue
+        recipe_character_public_id = _uuid_from_value(recipe_public_id)
+        if recipe_character_public_id is None:
+            continue
+        character_asset = get_character_asset(session, recipe_character_public_id)
+        if character_asset is not None:
+            return character_asset
+    return None
+
+
+def _request_workflow(
+    target_kind: str,
+    *,
+    workflows_root: Path,
+) -> tuple[str, Path]:
     if target_kind == "video":
-        return "text_to_video_v1", TEXT_TO_VIDEO_WORKFLOW_PATH
-    return "text_to_image_v1", TEXT_TO_IMAGE_WORKFLOW_PATH
+        return "text_to_video_v1", workflows_root / "text_to_video_v1.json"
+    return "text_to_image_v1", workflows_root / "text_to_image_v1.json"
 
 
 def _request_history_details(session: Session, request_asset_id: uuid.UUID) -> dict[str, object]:
@@ -485,7 +533,79 @@ def _request_history_details(session: Session, request_asset_id: uuid.UUID) -> d
     raise LookupError("Generation request history is missing.")
 
 
-def _generation_request_payload(session: Session, request_asset: Asset) -> dict[str, object]:
+def _proof_asset_for_request(session: Session, request_asset_id: uuid.UUID) -> Asset | None:
+    return session.execute(
+        _asset_query().where(
+            Asset.asset_type == "generation-proof-image",
+            Asset.source_asset_id == request_asset_id,
+        )
+    ).scalar_one_or_none()
+
+
+def _proof_image_job_payload(session: Session, request_asset: Asset) -> dict[str, object]:
+    job = get_generation_proof_job(session, request_asset.public_id)
+    if job is None:
+        return {
+            "detail": "No proof-image job has been queued for this request.",
+            "job_public_id": None,
+            "progress_percent": None,
+            "status": "not-queued",
+            "step_name": None,
+        }
+    if job.status == "completed":
+        detail = "The proof-image job completed successfully."
+    elif job.status == "failed":
+        detail = job.error_summary or "The proof-image job failed."
+    else:
+        detail = f"The proof-image job is {job.status}."
+    return {
+        "detail": detail,
+        "job_public_id": job.public_id,
+        "progress_percent": job.progress_percent,
+        "status": job.status,
+        "step_name": job.step_name,
+    }
+
+
+def _proof_image_artifact_payload(
+    session: Session,
+    request_asset: Asset,
+    *,
+    api_base_url: str,
+) -> dict[str, object] | None:
+    proof_storage_object = get_generation_proof_storage_object(session, request_asset.public_id)
+    if proof_storage_object is None:
+        return None
+
+    storage_path = Path(proof_storage_object.storage_path)
+    if not storage_path.exists():
+        return None
+
+    proof_asset = _proof_asset_for_request(session, request_asset.id)
+    if proof_asset is None:
+        return None
+
+    proof_image_url = (
+        f"{api_base_url}/api/v1/generation/requests/{request_asset.public_id}/proof-image"
+        if api_base_url
+        else None
+    )
+    return {
+        "byte_size": proof_storage_object.byte_size,
+        "media_type": proof_storage_object.media_type,
+        "proof_asset_public_id": proof_asset.public_id,
+        "status": "available",
+        "storage_object_public_id": proof_storage_object.public_id,
+        "url": proof_image_url,
+    }
+
+
+def _generation_request_payload(
+    session: Session,
+    request_asset: Asset,
+    *,
+    api_base_url: str = "",
+) -> dict[str, object]:
     details = _request_history_details(session, request_asset.id)
     raw_prompt = details.get("raw_prompt")
     expanded_prompt = details.get("expanded_prompt")
@@ -507,7 +627,13 @@ def _generation_request_payload(session: Session, request_asset: Asset) -> dict[
 
     local_lora = details.get("local_lora")
     external_lora = details.get("external_lora")
+    character_public_id: uuid.UUID | None = None
+    if request_asset.source_asset_id is not None:
+        character_asset = session.get(Asset, request_asset.source_asset_id)
+        if character_asset is not None and character_asset.asset_type == "character":
+            character_public_id = character_asset.public_id
     return {
+        "character_public_id": character_public_id,
         "created_at": request_asset.created_at,
         "expanded_prompt": expanded_prompt,
         "external_lora": external_lora if isinstance(external_lora, dict) else None,
@@ -515,6 +641,12 @@ def _generation_request_payload(session: Session, request_asset: Asset) -> dict[
         "matched_handles": [str(handle) for handle in matched_handles],
         "provider_status": provider_status,
         "public_id": request_asset.public_id,
+        "proof_image_artifact": _proof_image_artifact_payload(
+            session,
+            request_asset,
+            api_base_url=api_base_url,
+        ),
+        "proof_image_job": _proof_image_job_payload(session, request_asset),
         "raw_prompt": raw_prompt,
         "status": request_asset.status,
         "target_kind": target_kind,
@@ -530,16 +662,31 @@ def create_generation_request(
     local_lora_registry_public_id: uuid.UUID | None,
     prompt_text: str,
     target_kind: str,
+    api_base_url: str = "",
 ) -> dict[str, object]:
     expansion = expand_prompt_text(session, prompt_text)
     local_lora = _validate_local_lora_entry(session, local_lora_registry_public_id)
     external_lora = _validate_external_lora_entry(session, external_lora_registry_public_id)
     capability = get_generation_capability()
     actor_id = get_system_actor_id(session)
-    workflow_id, workflow_path = _request_workflow(target_kind)
+    workflow_id, workflow_path = _request_workflow(
+        target_kind,
+        workflows_root=capability.workflows_root,
+    )
+    character_asset = _resolve_request_character_asset(
+        session,
+        local_lora=local_lora,
+        matched_handles=cast(list[str], expansion["matched_handles"]),
+    )
+    request_status = (
+        "queued"
+        if capability.status == "ready" and target_kind == "image"
+        else "staged"
+    )
     request_asset = Asset(
         asset_type="generation-request",
-        status="prepared" if capability.status == "ready" else "staged",
+        status=request_status,
+        source_asset_id=character_asset.id if character_asset is not None else None,
         created_by_actor_id=actor_id,
         current_owner_actor_id=actor_id,
     )
@@ -553,6 +700,9 @@ def create_generation_request(
         details={
             "expanded_prompt": expansion["expanded_prompt"],
             "external_lora": external_lora,
+            "character_public_id": (
+                str(character_asset.public_id) if character_asset is not None else None
+            ),
             "local_lora": local_lora,
             "matched_handles": cast(list[str], expansion["matched_handles"]),
             "provider_status": capability.status,
@@ -563,18 +713,40 @@ def create_generation_request(
         },
         event_type="generation.requested",
     )
+    if request_status == "queued":
+        queue_generation_proof_image(
+            session,
+            character_public_id=character_asset.public_id if character_asset is not None else None,
+            expanded_prompt=cast(str, expansion["expanded_prompt"]),
+            external_lora_registry_public_id=external_lora_registry_public_id,
+            local_lora_registry_public_id=local_lora_registry_public_id,
+            request_public_id=request_asset.public_id,
+            workflow_id=workflow_id,
+            workflow_path=workflow_path,
+        )
     session.flush()
-    return _generation_request_payload(session, request_asset)
+    return _generation_request_payload(session, request_asset, api_base_url=api_base_url)
 
 
-def recent_generation_requests(session: Session) -> list[dict[str, object]]:
+def recent_generation_requests(
+    session: Session,
+    *,
+    api_base_url: str = "",
+) -> list[dict[str, object]]:
     request_assets = list(
         session.scalars(_asset_query().where(Asset.asset_type == "generation-request")).all()
     )
-    return [_generation_request_payload(session, asset) for asset in request_assets]
+    return [
+        _generation_request_payload(session, asset, api_base_url=api_base_url)
+        for asset in request_assets
+    ]
 
 
-def get_generation_workspace_payload(session: Session) -> dict[str, object]:
+def get_generation_workspace_payload(
+    session: Session,
+    *,
+    api_base_url: str = "",
+) -> dict[str, object]:
     capability = get_generation_capability()
     return {
         "characters": _character_prompt_recipes(session),
@@ -582,7 +754,7 @@ def get_generation_workspace_payload(session: Session) -> dict[str, object]:
         "external_loras": list_external_lora_options(session),
         "generation_capability": {
             "detail": (
-                "ComfyUI is ready for generation requests."
+                "ComfyUI is ready for queued proof-image generation requests."
                 if capability.status == "ready"
                 else (
                     "Generation requests are stored truthfully, but media output is not "
@@ -593,15 +765,15 @@ def get_generation_workspace_payload(session: Session) -> dict[str, object]:
             "status": capability.status,
         },
         "local_loras": list_local_lora_options(session),
-        "recent_requests": recent_generation_requests(session),
+        "recent_requests": recent_generation_requests(session, api_base_url=api_base_url),
         "workflow_contracts": [
             {
-                "path": str(TEXT_TO_IMAGE_WORKFLOW_PATH),
+                "path": str(capability.workflows_root / "text_to_image_v1.json"),
                 "target_kind": "image",
                 "workflow_id": "text_to_image_v1",
             },
             {
-                "path": str(TEXT_TO_VIDEO_WORKFLOW_PATH),
+                "path": str(capability.workflows_root / "text_to_video_v1.json"),
                 "target_kind": "video",
                 "workflow_id": "text_to_video_v1",
             },

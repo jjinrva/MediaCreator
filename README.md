@@ -77,10 +77,10 @@ The default bind host is `0.0.0.0`; open the web app through the machine's curre
 - bind the API and web server on `0.0.0.0`
 - open the browser against the machine's current hostname or LAN IP
 - use `127.0.0.1` only for on-box API health checks and internal server-side defaults
-- photoset upload and QC return immediately
-- base character creation returns immediately after accepted-entry validation
-- preview export, high-detail reconstruction, LoRA training, and controlled video render are queued background jobs
-- queued job progress comes from `GET /api/v1/jobs/{job_public_id}`
+- `POST /api/v1/photosets` returns `202 Accepted` after upload staging, pre-ingest photoset creation, and `photoset-ingest` job enqueue
+- `POST /api/v1/characters` returns `201 Created` after accepted-entry validation and record persistence
+- photoset ingest, preview export, high-detail reconstruction, LoRA training, and controlled video render are queued background jobs
+- queued job progress for those background jobs comes from `GET /api/v1/jobs/{job_public_id}`
 - worker liveness comes from `GET /api/v1/system/status`; if the heartbeat is stale or offline, queued jobs will not advance
 
 ## Run the API
@@ -106,7 +106,7 @@ Phase 12 adds:
 
 - `GET /api/v1/exports/characters/{character_public_id}` for preview/export scaffold status
 - `POST /api/v1/exports/characters/{character_public_id}/preview` to queue the preview export job
-- `GET /api/v1/exports/characters/{character_public_id}/preview.glb` for the future preview artifact path
+- `GET /api/v1/exports/characters/{character_public_id}/preview.glb` for the saved preview/base GLB when that artifact exists
 - `GET /api/v1/exports/characters/{character_public_id}/final.glb` for the future final export path
 
 Phase 13 adds:
@@ -131,6 +131,12 @@ Phase 18 adds:
 
 - `POST /api/v1/exports/characters/{character_public_id}/reconstruction` for the truthful high-detail reconstruction job
 - `GET /api/v1/exports/characters/{character_public_id}/detail-prep.json` for the optional detail-prep artifact
+
+Current 3D truth:
+
+- the saved 3D artifact is currently a riggable base/proxy GLB
+- the high-detail path may also write a detail-prep manifest when the capture set qualifies
+- the app does not currently claim a refined photo-derived mesh artifact
 
 Phase 19 adds:
 
@@ -173,15 +179,26 @@ Phase 25 adds:
 - `POST /api/v1/generation/requests` to store one generation request with expanded prompt and registry-backed model references
 - `GET /api/v1/generation/external-loras/search` and `POST /api/v1/generation/external-loras/import` for the opt-in Civitai discovery/import path
 
+Current generation truth:
+
+- the app stores generation requests and prompt-expansion metadata
+- it does not yet execute a queued proof-image generation job or persist a proof image artifact end-to-end
+
 Phase 26 adds:
 
 - `GET /api/v1/system/diagnostics` for live end-to-end checks across ingest, body/pose persistence, preview/export availability, LoRA readiness, and generation readiness
 
-Long-running POST routes return `202 Accepted` and a `job_public_id`. Follow those jobs with:
+Queued job endpoints return a `job_public_id`. Follow those jobs with:
 
 ```bash
 curl http://127.0.0.1:8010/api/v1/jobs/<job-public-id>
 ```
+
+Current route truth:
+
+- `POST /api/v1/photosets` returns `202 Accepted` with a real ingest job and a queued photoset record
+- `POST /api/v1/characters` returns `201 Created`
+- photoset ingest, preview export, high-detail reconstruction, LoRA training, and controlled video render queue background jobs
 
 ## Generation capability status
 

@@ -57,7 +57,7 @@ describe("Phase 11 character ingest", () => {
       expect(screen.getByRole("img", { name: "Preview of photo-b.png" })).toBeTruthy();
     });
 
-    expect(screen.getAllByText("QC pending backend upload")).toHaveLength(2);
+    expect(screen.getAllByText("Pending backend classification")).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: "Remove photo-a.png" }));
 
@@ -66,9 +66,7 @@ describe("Phase 11 character ingest", () => {
     });
 
     expect(screen.getByRole("img", { name: "Preview of photo-b.png" })).toBeTruthy();
-    expect(
-      screen.getByText(/No previously created characters are shown here/i)
-    ).toBeTruthy();
+    expect(screen.getAllByText("Pending backend classification")).toHaveLength(1);
   });
 
   it("creates the base character from a persisted photoset and redirects to the public route", async () => {
@@ -87,17 +85,32 @@ describe("Phase 11 character ingest", () => {
                 original: "http://localhost:8010/api/v1/photosets/phase-11/original",
                 thumbnail: "http://localhost:8010/api/v1/photosets/phase-11/thumbnail"
               },
+              bucket: "both",
               original_filename: "male_body_front.png",
+              photo_asset_public_id: "phase-11-photo",
               public_id: "phase-11-entry",
               qc_metrics: {
                 body_landmarks_detected: true,
                 blur_score: 120,
+                blur_ok_for_body: true,
+                blur_ok_for_lora: true,
+                body_detected: true,
                 exposure_score: 96,
+                exposure_ok_for_body: true,
+                exposure_ok_for_lora: true,
                 face_detected: true,
-                framing_label: "full-body"
+                framing_label: "full-body",
+                has_person: true,
+                occlusion_label: "clear",
+                person_detected: true,
+                resolution_ok: true
               },
               qc_reasons: [],
-              qc_status: "pass"
+              qc_status: "pass",
+              reason_codes: [],
+              reason_messages: [],
+              usable_for_body: true,
+              usable_for_lora: true
             }
           ],
           public_id: "phase-11-photoset",
@@ -167,17 +180,32 @@ describe("Phase 11 character ingest", () => {
               original: "http://localhost:8010/api/v1/photosets/phase-11/original",
               thumbnail: "http://localhost:8010/api/v1/photosets/phase-11/thumbnail"
             },
+            bucket: "rejected",
             original_filename: "female_head_front.png",
+            photo_asset_public_id: "phase-11-photo",
             public_id: "phase-11-entry",
             qc_metrics: {
               body_landmarks_detected: false,
               blur_score: 55,
+              blur_ok_for_body: true,
+              blur_ok_for_lora: false,
+              body_detected: false,
               exposure_score: 96,
+              exposure_ok_for_body: true,
+              exposure_ok_for_lora: true,
               face_detected: true,
-              framing_label: "head-closeup"
+              framing_label: "head-closeup",
+              has_person: true,
+              occlusion_label: "body_not_visible",
+              person_detected: true,
+              resolution_ok: true
             },
             qc_reasons: ["Image appears too blurry."],
-            qc_status: "fail"
+            qc_status: "fail",
+            reason_codes: ["blur_below_lora_threshold"],
+            reason_messages: ["Image appears too blurry."],
+            usable_for_body: false,
+            usable_for_lora: false
           }
         ],
         public_id: "phase-11-photoset",
@@ -194,8 +222,10 @@ describe("Phase 11 character ingest", () => {
 
     expect(screen.getByText("Rejected from character use")).toBeTruthy();
     expect(
-      screen.getByText(/No accepted photos are available yet\./i)
-    ).toBeTruthy();
+      screen.getAllByText(
+        /Create saved character stays disabled until ingest completes and at least one accepted image exists\./i
+      ).length
+    ).toBeGreaterThan(0);
     expect(
       (screen.getByRole("button", { name: "Build base character" }) as HTMLButtonElement).disabled
     ).toBe(true);

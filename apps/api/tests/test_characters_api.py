@@ -16,6 +16,7 @@ from app.models.asset import Asset
 from app.models.history_event import HistoryEvent
 from app.services import photo_prep
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -81,11 +82,24 @@ def _build_qc_report(
         framing_label=framing_label,
         metrics={
             "has_person": face_detected or body_detected,
+            "person_detected": face_detected or body_detected,
             "face_detected": face_detected,
             "body_detected": body_detected,
             "body_landmarks_detected": body_detected,
             "blur_score": blur_score,
+            "blur_ok_for_lora": blur_score >= photo_prep.MIN_BLUR_FOR_LORA,
+            "blur_ok_for_body": blur_score >= photo_prep.MIN_BLUR_FOR_BODY,
             "exposure_score": exposure_score,
+            "exposure_ok_for_lora": (
+                photo_prep.MIN_EXPOSURE_FOR_LORA
+                <= exposure_score
+                <= photo_prep.MAX_EXPOSURE_FOR_LORA
+            ),
+            "exposure_ok_for_body": (
+                photo_prep.MIN_EXPOSURE_FOR_BODY
+                <= exposure_score
+                <= photo_prep.MAX_EXPOSURE_FOR_BODY
+            ),
             "framing_label": framing_label,
             "occlusion_label": occlusion_label,
             "resolution_ok": True,
@@ -170,8 +184,9 @@ def test_character_creation_registers_lineage_history_and_detail_payload(
 
             try:
                 with TestClient(app) as client:
-                    photoset_response = client.post(
-                        "/api/v1/photosets",
+                    _, photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Phase 11 browser subject"},
                         files=[
                             (
@@ -200,9 +215,6 @@ def test_character_creation_registers_lineage_history_and_detail_payload(
                             ),
                         ],
                     )
-
-                    assert photoset_response.status_code == 201
-                    photoset_payload = photoset_response.json()
                     accepted_entries = [
                         entry
                         for entry in photoset_payload["entries"]
@@ -336,8 +348,10 @@ def test_character_creation_rejects_photoset_with_zero_accepted_entries(
 
             try:
                 with TestClient(app) as client:
-                    photoset_response = client.post(
-                        "/api/v1/photosets",
+                    _, photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
+                        data={"character_label": "Rejected character"},
                         files=[
                             (
                                 "photos",
@@ -357,12 +371,11 @@ def test_character_creation_rejects_photoset_with_zero_accepted_entries(
                             ),
                         ],
                     )
-                    assert photoset_response.status_code == 201
-                    assert photoset_response.json()["accepted_entry_count"] == 0
+                    assert photoset_payload["accepted_entry_count"] == 0
 
                     create_response = client.post(
                         "/api/v1/characters",
-                        json={"photoset_public_id": photoset_response.json()["public_id"]},
+                        json={"photoset_public_id": photoset_payload["public_id"]},
                     )
 
                     assert create_response.status_code == 400

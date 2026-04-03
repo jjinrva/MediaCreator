@@ -22,6 +22,7 @@ from app.services.lora_training import (
     update_lora_registry_status_for_job,
 )
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -70,9 +71,13 @@ def _configure_storage(monkeypatch: MonkeyPatch, temp_path: Path) -> Path:
     return nas_root
 
 
-def _create_character_and_dataset(client: TestClient) -> str:
-    photoset_response = client.post(
-        "/api/v1/photosets",
+def _create_character_and_dataset(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> str:
+    _, photoset_payload = upload_photoset_and_complete_ingest(
+        client,
+        session_factory,
         data={"character_label": "Phase 21 LoRA subject"},
         files=[
             (
@@ -93,11 +98,10 @@ def _create_character_and_dataset(client: TestClient) -> str:
             ),
         ],
     )
-    assert photoset_response.status_code == 201
 
     create_response = client.post(
         "/api/v1/characters",
-        json={"photoset_public_id": photoset_response.json()["public_id"]},
+        json={"photoset_public_id": photoset_payload["public_id"]},
     )
     assert create_response.status_code == 201
     character_public_id = str(create_response.json()["public_id"])
@@ -125,7 +129,7 @@ def test_lora_training_route_reports_truthful_disabled_state_when_ai_toolkit_is_
 
             try:
                 with TestClient(app) as client:
-                    character_public_id = _create_character_and_dataset(client)
+                    character_public_id = _create_character_and_dataset(client, session_factory)
 
                     response = client.get(f"/api/v1/lora/characters/{character_public_id}")
                     assert response.status_code == 200
@@ -163,7 +167,9 @@ def test_lora_registry_tracks_statuses_and_resolves_active_generation_model(
 
             try:
                 with TestClient(app) as client:
-                    character_public_id = uuid.UUID(_create_character_and_dataset(client))
+                    character_public_id = uuid.UUID(
+                        _create_character_and_dataset(client, session_factory)
+                    )
 
                     old_output_path = (
                         nas_root
@@ -315,7 +321,10 @@ def test_lora_training_route_queues_job_and_requires_worker_cycle(
 
             try:
                 with TestClient(app) as client:
-                    character_public_id = _create_character_and_dataset(client)
+                    character_public_id = _create_character_and_dataset(
+                        client,
+                        session_factory,
+                    )
 
                     training_response = client.post(
                         f"/api/v1/lora/characters/{character_public_id}"

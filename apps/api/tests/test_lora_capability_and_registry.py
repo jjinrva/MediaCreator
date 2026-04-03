@@ -48,7 +48,9 @@ def test_current_lora_registry_entries_require_real_artifacts_for_activation(
                 from fastapi.testclient import TestClient
 
                 with TestClient(app) as client:
-                    character_public_id = uuid.UUID(_create_character_and_dataset(client))
+                    character_public_id = uuid.UUID(
+                        _create_character_and_dataset(client, session_factory)
+                    )
 
                 with session_factory() as session:
                     _assert_missing_artifact_is_rejected(

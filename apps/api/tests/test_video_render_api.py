@@ -17,6 +17,7 @@ from app.models.job import Job
 from app.models.storage_object import StorageObject
 from app.services.jobs import run_worker_once
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -61,9 +62,13 @@ def _configure_storage(monkeypatch: MonkeyPatch, temp_path: Path) -> None:
     )
 
 
-def _create_character(client: TestClient) -> str:
-    photoset_response = client.post(
-        "/api/v1/photosets",
+def _create_character(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+) -> str:
+    _, photoset_payload = upload_photoset_and_complete_ingest(
+        client,
+        session_factory,
         data={"character_label": "Video render test character"},
         files=[
             (
@@ -76,11 +81,10 @@ def _create_character(client: TestClient) -> str:
             )
         ],
     )
-    assert photoset_response.status_code == 201
 
     create_response = client.post(
         "/api/v1/characters",
-        json={"photoset_public_id": photoset_response.json()["public_id"]},
+        json={"photoset_public_id": photoset_payload["public_id"]},
     )
     assert create_response.status_code == 201
     return str(create_response.json()["public_id"])
@@ -98,7 +102,7 @@ def test_video_render_creates_a_real_mp4_with_character_and_motion_lineage(
 
             try:
                 with TestClient(app) as client:
-                    character_public_id = _create_character(client)
+                    character_public_id = _create_character(client, session_factory)
 
                     motion_response = client.get("/api/v1/motion")
                     assert motion_response.status_code == 200

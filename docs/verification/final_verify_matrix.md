@@ -1,30 +1,35 @@
 # Final verification matrix
 
-Generated at: `2026-04-02T15:56:19Z`
+Generated at: `2026-04-03T02:56:01Z`
 
-Overall status: PASS
+Overall status: PARTIAL
 
 ## Command results
 
 | Command | Status |
 |---|---|
-| `cd /opt/MediaCreator/apps/api && .venv/bin/pytest tests/test_system_runtime_api.py -q` | PASS |
-| `PATH="/opt/MediaCreator/infra/bin:$PATH" pnpm --dir /opt/MediaCreator/apps/web exec vitest run tests/unit/runtime-settings-panel.test.tsx tests/unit/diagnostics-panel.test.tsx` | PASS |
-| `PATH="/opt/MediaCreator/infra/bin:$PATH" PLAYWRIGHT_BROWSERS_PATH="/opt/MediaCreator/infra/playwright" pnpm --dir /opt/MediaCreator/apps/web exec playwright test tests/e2e/settings-diagnostics.spec.ts` | PASS |
+| `cd /opt/MediaCreator/apps/api && .venv/bin/pytest -q tests/test_generation_provider.py tests/test_lora_proof_image_contract.py tests/test_generation_workspace_api.py` | PASS |
 | `make test-api` | PASS |
-| `make test-web` | PASS |
+| `make test-web` | FAIL |
 | `make lint` | PASS |
 | `make typecheck` | PASS |
 
 ## Coverage summary
 
-- PASS: settings truth is verified through `GET /api/v1/system/status`, `/studio/settings`, the targeted API test, the targeted settings-panel unit test, and the targeted settings/diagnostics Playwright flow.
-- PASS: diagnostics truth is verified through `GET /api/v1/system/diagnostics`, `/studio/diagnostics`, the targeted API test, the targeted diagnostics-panel unit test, and the targeted settings/diagnostics Playwright flow.
-- PASS: focused Blender and generation capability checks are covered by the full API suite (`test_blender_export_api.py`, `test_video_render_api.py`, `test_generation_provider.py`) and the full web suite (`video-render.spec.ts`, `generation-workspace.spec.ts`).
-- PASS: operator handoff coverage is present in `README.md`, `docs/handoff/operator_runbook.md`, and `docs/handoff/overnight_acceptance_report.md`.
+- PASS: generation proof-image truth is covered by the targeted API tests for placeholder blocking,
+  ready runtime proof-image execution, artifact persistence, and lineage persistence.
+- PASS: the full API suite is clean on the current tree (`54 passed`).
+- PASS: lint and typecheck are clean on the current tree.
+- FAIL: the current Playwright sweep still includes stale browser expectations outside this phase,
+  including missing character-label setup and older worker/offline assumptions.
 
 ## Notes
 
-- `apps/web/playwright.config.js` now pins Playwright to one worker so the local Next.js dev server remains stable during the full browser sweep.
-- MediaCreator still reports generation truthfully as unavailable or partial until a real ComfyUI service plus NAS-backed model files exist.
-- MediaCreator still reports LoRA training truthfully as unavailable until AI Toolkit is installed.
+- The Phase 05 backend patch is verified: the repo now has a real `generation-proof-image` job,
+  queue path, worker branch, provider execution service, real saved PNG artifact proof, and real
+  storage lineage proof.
+- The live repo workflow files under `workflows/comfyui/` remain placeholders, so generation stays
+  truthfully blocked on this machine until validated workflow graphs and the real ComfyUI runtime
+  are configured.
+- `make test-web` is not clean yet because several Playwright expectations are stale relative to
+  the current operator flow; that broad browser-suite repair is outside this narrow Phase 05 pack.

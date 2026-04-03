@@ -15,6 +15,7 @@ from app.models.job import Job
 from app.models.storage_object import StorageObject
 from app.services.jobs import run_worker_once
 from tests.db_test_utils import migrated_database
+from tests.photoset_test_utils import upload_photoset_and_complete_ingest
 
 
 def _session_factory(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
@@ -69,8 +70,9 @@ def test_blender_preview_export_route_generates_a_glb_and_job_metadata(
 
             try:
                 with TestClient(app) as client:
-                    photoset_response = client.post(
-                        "/api/v1/photosets",
+                    _, photoset_payload = upload_photoset_and_complete_ingest(
+                        client,
+                        session_factory,
                         data={"character_label": "Phase 17 Blender subject"},
                         files=[
                             (
@@ -91,11 +93,10 @@ def test_blender_preview_export_route_generates_a_glb_and_job_metadata(
                             ),
                         ],
                     )
-                    assert photoset_response.status_code == 201
 
                     create_response = client.post(
                         "/api/v1/characters",
-                        json={"photoset_public_id": photoset_response.json()["public_id"]},
+                        json={"photoset_public_id": photoset_payload["public_id"]},
                     )
                     assert create_response.status_code == 201
                     character_public_id = create_response.json()["public_id"]
@@ -165,11 +166,9 @@ def test_blender_preview_export_route_generates_a_glb_and_job_metadata(
                     assert job.status == "completed"
                     assert job.step_name == "completed"
                     assert job.output_storage_object_id is not None
-                    assert len(history_events) == 2
-                    assert {event.event_type for event in history_events} == {
-                        "job.completed",
-                        "export.preview_generated",
-                    }
+                    event_types = [event.event_type for event in history_events]
+                    assert event_types.count("export.preview_generated") == 1
+                    assert event_types.count("job.completed") >= 1
             finally:
                 app.dependency_overrides.clear()
                 engine.dispose()

@@ -1,20 +1,10 @@
 {
-  "generated_at": "2026-04-02T15:56:19Z",
-  "overall_status": "pass",
+  "generated_at": "2026-04-03T02:56:01Z",
+  "overall_status": "partial",
   "commands": [
     {
-      "command": "cd /opt/MediaCreator/apps/api && .venv/bin/pytest tests/test_system_runtime_api.py -q",
-      "name": "phase26_api_targeted",
-      "status": "pass"
-    },
-    {
-      "command": "PATH=\"/opt/MediaCreator/infra/bin:$PATH\" pnpm --dir /opt/MediaCreator/apps/web exec vitest run tests/unit/runtime-settings-panel.test.tsx tests/unit/diagnostics-panel.test.tsx",
-      "name": "phase26_web_unit_targeted",
-      "status": "pass"
-    },
-    {
-      "command": "PATH=\"/opt/MediaCreator/infra/bin:$PATH\" PLAYWRIGHT_BROWSERS_PATH=\"/opt/MediaCreator/infra/playwright\" pnpm --dir /opt/MediaCreator/apps/web exec playwright test tests/e2e/settings-diagnostics.spec.ts",
-      "name": "phase26_playwright_targeted",
+      "command": "cd /opt/MediaCreator/apps/api && .venv/bin/pytest -q tests/test_generation_provider.py tests/test_lora_proof_image_contract.py tests/test_generation_workspace_api.py",
+      "name": "phase05_generation_targeted",
       "status": "pass"
     },
     {
@@ -25,7 +15,7 @@
     {
       "command": "make test-web",
       "name": "full_web_suite",
-      "status": "pass"
+      "status": "fail"
     },
     {
       "command": "make lint",
@@ -40,51 +30,43 @@
   ],
   "coverage": [
     {
-      "area": "settings_page_truth",
+      "area": "generation_proof_image_truth",
       "evidence": [
-        "/api/v1/system/status",
-        "/studio/settings",
-        "apps/api/tests/test_system_runtime_api.py",
-        "apps/web/tests/unit/runtime-settings-panel.test.tsx",
-        "apps/web/tests/e2e/settings-diagnostics.spec.ts"
+        "apps/api/tests/test_generation_provider.py",
+        "apps/api/tests/test_lora_proof_image_contract.py",
+        "apps/api/tests/test_generation_workspace_api.py"
       ],
       "status": "pass"
     },
     {
-      "area": "diagnostics_page_truth",
+      "area": "full_api_suite",
       "evidence": [
-        "/api/v1/system/diagnostics",
-        "/studio/diagnostics",
-        "apps/api/tests/test_system_runtime_api.py",
-        "apps/web/tests/unit/diagnostics-panel.test.tsx",
-        "apps/web/tests/e2e/settings-diagnostics.spec.ts"
+        "make test-api"
       ],
       "status": "pass"
     },
     {
-      "area": "focused_blender_and_generation_checks",
+      "area": "lint_and_typecheck",
       "evidence": [
-        "tests/test_blender_export_api.py",
-        "tests/test_video_render_api.py",
-        "tests/test_generation_provider.py",
-        "tests/e2e/video-render.spec.ts",
-        "tests/e2e/generation-workspace.spec.ts"
+        "make lint",
+        "make typecheck"
       ],
       "status": "pass"
     },
     {
-      "area": "operator_handoff_docs",
+      "area": "full_web_suite",
       "evidence": [
-        "README.md",
-        "docs/handoff/operator_runbook.md",
-        "docs/handoff/overnight_acceptance_report.md"
+        "make test-web",
+        "apps/web/tests/e2e/character-upload-qc.spec.ts",
+        "apps/web/tests/e2e/character-creation.spec.ts",
+        "apps/web/tests/e2e/generation-workspace.spec.ts"
       ],
-      "status": "pass"
+      "status": "fail"
     }
   ],
   "notes": [
-    "Playwright workers are pinned to 1 in apps/web/playwright.config.js so the Next.js dev server does not hit intermittent invalid-hook failures under concurrent browser workers.",
-    "Generation remains truthful: final media generation still depends on a real ComfyUI service plus NAS-backed checkpoint and VAE files.",
-    "Local LoRA training remains truthful: the UI and API report unavailable when AI Toolkit is not installed."
+    "Phase 05 is verified: the repo now contains a real generation-proof-image job, queue path, worker branch, provider execution service, saved PNG artifact proof, and storage lineage proof.",
+    "Generation remains truthfully blocked on the live repo workflows until validated ComfyUI graphs replace the placeholder files under workflows/comfyui or MEDIACREATOR_COMFYUI_WORKFLOWS_ROOT points at validated graphs.",
+    "The broader Playwright suite is not clean yet because several browser expectations are stale relative to the current operator flow and worker-state assumptions."
   ]
 }
